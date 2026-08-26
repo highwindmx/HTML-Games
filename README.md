@@ -2,7 +2,7 @@
 
 个人小游戏合集 —— 零构建、双击即玩的 Web / HTML5 游戏，每款游戏一个独立子目录，后续新增游戏直接加目录即可。
 
-**入口引导页**：根目录 [`index.html`](index.html) 是一张导航卡片，分别进入三款游戏及其子版本（打开即玩）。
+**入口引导页**：根目录 [`index.html`](index.html) 是一张导航卡片，分别进入各款游戏及其子版本（打开即玩）。
 
 ## 游戏一览
 
@@ -11,6 +11,7 @@
 | `gravity/` | **引力带我前行**（Gravity） | 原生 HTML/CSS/JS，单文件 | 弹弓式发射无动力火箭，借行星引力场绕行命中目标；预测线与实飞共用同一积分器，保证"所见即所飞" | 浏览器直接打开 `index.html` |
 | `hunt/` | **弓猎** | Godot 4.7 (GDScript)，可导出 HTML5；`web/` 另有 Three.js 纯网页复刻版 | 球形星球表面弓箭狩猎：熊 / 鹿 / 鸟三种猎物，计时狩猎与配额狩猎双模式，厚皮 / 迅捷 / 蛮力等难度徽章；支持触屏虚拟摇杆 + PWA 离线游玩 | 浏览器打开 `web/index.html`（网页版）；或用 Godot 4.7 打开 `hunt/project.godot` 编辑，`docs/` 为 HTML5 导出产物可直接部署 |
 | `warship/` | **风帆王者** | Phaser 3 + Three.js（本地 vendored，无需服务器） | 风帆舰队海战：借风向操舵、侧舷齐射、舰队 AI、编队与升级、关卡推进 | 浏览器直接打开 `25D/index.html`（2.5D 俯视版）或 `3D/index.html`（3D 球面版） |
+| `boids/` | **鸟群 Boids** | 原生 HTML/CSS/JS，单文件 | 经典 Reynolds 三规则（分离 / 对齐 / 聚合）驱动的鸟群涌现；可调权重、感知半径、数量，鼠标可吸引或驱散；空间网格优化支撑数百只实时模拟 | 浏览器直接打开 `index.html` |
 
 > warship 的 `archive/` 为早期"风帆舰队对轰"原型，`smoke.js` 为无头冒烟测试脚本（Node 驱动 Phaser 桩跑通战斗场景）。
 
@@ -28,6 +29,7 @@ HTMLGames/
 │   ├── docs/         # Godot HTML5 导出产物（GitHub Pages 部署目录）
 │   ├── bow/          # 弓武器原型
 │   └── bullet/       # 弹道原型
+├── boids/           # 鸟群算法模拟（单文件 Boids + 控制面板）
 └── warship/          # 风帆王者（Phaser 3）
     ├── 25D/          # 2.5D 俯视版
     ├── 3D/           # 3D 球面版（Three.js 地球仪）

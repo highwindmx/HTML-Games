@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Boids · 鸟群算法模拟</title>
+<style>
+  :root{
+    --bg:#0b0f1a; --panel:rgba(18,24,40,.82); --line:rgba(255,255,255,.12);
+    --txt:#e8eefb; --muted:#8b97b3; --accent:#4ea1ff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  #cv{display:block;position:fixed;inset:0;width:100%;height:100%;}
+  .b2home{position:fixed;top:14px;left:14px;z-index:2147483647;display:inline-flex;align-items:center;gap:4px;
+    font:600 13px/1 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#eef2fb;
+    text-decoration:none;background:rgba(15,20,32,.72);border:1px solid rgba(255,255,255,.22);
+    padding:9px 13px;border-radius:11px;backdrop-filter:blur(4px);box-shadow:0 4px 14px rgba(0,0,0,.35);}
+  .b2home:hover{background:rgba(78,161,255,.92);border-color:rgba(78,161,255,.92);}
+  #panel{position:fixed;top:14px;right:14px;width:250px;z-index:50;background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(8px);
+    padding:14px 14px 10px;box-shadow:0 8px 30px rgba(0,0,0,.45);user-select:none;}
+  #panel h1{font-size:14px;margin:0 0 2px;font-weight:600;letter-spacing:.3px;}
+  #panel .sub{font-size:11px;color:var(--muted);margin-bottom:6px;}
+  .row{display:flex;align-items:center;justify-content:space-between;font-size:12px;margin:9px 0 3px;}
+  .row .val{color:var(--accent);font-variant-numeric:tabular-nums;}
+  input[type=range]{width:100%;accent-color:var(--accent);height:4px;}
+  .toggles{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:10px;font-size:12px;}
+  .toggles label{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--muted);}
+  .btns{display:flex;gap:8px;margin-top:12px;}
+  .btns button{flex:1;background:rgba(255,255,255,.07);color:var(--txt);border:1px solid var(--line);
+    border-radius:9px;padding:8px 0;font-size:12px;cursor:pointer;transition:.15s;}
+  .btns button:hover{background:rgba(78,161,255,.22);border-color:var(--accent);}
+  #hint{position:fixed;left:14px;bottom:14px;z-index:50;font-size:12px;color:var(--muted);
+    background:rgba(15,20,32,.6);border:1px solid var(--line);border-radius:10px;padding:7px 11px;backdrop-filter:blur(4px);}
+  #stats{position:fixed;right:14px;bottom:14px;z-index:50;font-size:11px;color:var(--muted);
+    background:rgba(15,20,32,.6);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-variant-numeric:tabular-nums;}
+  @media (max-width:560px){ #panel{width:200px;} #hint{display:none;} }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<a href="../index.html" class="b2home" title="返回游戏集合">← 游戏集合</a>
+
+<div id="panel">
+  <h1>Boids · 鸟群算法</h1>
+  <div class="sub">Reynolds 三大规则实时模拟</div>
+
+  <div class="row"><span>数量</span><span class="val" id="vCount">220</span></div>
+  <input id="count" type="range" min="20" max="800" step="10" value="220">
+
+  <div class="row"><span>分离 Separation</span><span class="val" id="vSep">1.6</span></div>
+  <input id="sep" type="range" min="0" max="3" step="0.1" value="1.6">
+
+  <div class="row"><span>对齐 Alignment</span><span class="val" id="vAli">1.0</span></div>
+  <input id="ali" type="range" min="0" max="3" step="0.1" value="1.0">
+
+  <div class="row"><span>聚合 Cohesion</span><span class="val" id="vCoh">1.0</span></div>
+  <input id="coh" type="range" min="0" max="3" step="0.1" value="1.0">
+
+  <div class="row"><span>感知半径</span><span class="val" id="vPer">60</span></div>
+  <input id="per" type="range" min="20" max="140" step="5" value="60">
+
+  <div class="row"><span>最大速度</span><span class="val" id="vSpd">3.4</span></div>
+  <input id="spd" type="range" min="1" max="8" step="0.2" value="3.4">
+
+  <div class="toggles">
+    <label><input type="checkbox" id="trails" checked> 拖尾</label>
+    <label><input type="checkbox" id="wrap" checked> 边界环绕</label>
+    <label><input type="checkbox" id="mouseOn" checked> 鼠标互动</label>
+  </div>
+  <div class="btns">
+    <button id="pauseBtn">暂停</button>
+    <button id="resetBtn">重置</button>
+  </div>
+</div>
+
+<div id="hint">按住鼠标：吸引鸟群 · 右键 / Shift：驱散</div>
+<div id="stats">—</div>
+
+<script>
+(function(){
+  "use strict";
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.floor(W * DPR); cv.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---- parameters (bound to UI) ----
+  var P = { count:220, sep:1.6, ali:1.0, coh:1.0, per:60, spd:3.4,
+            trails:true, wrap:true, mouseOn:true };
+
+  function bind(id, key, valId, fix){
+    var el = document.getElementById(id);
+    var out = document.getElementById(valId);
+    function upd(){
+      var v = parseFloat(el.value);
+      P[key] = v;
+      out.textContent = (fix != null) ? v.toFixed(fix) : v;
+      if (key === 'count') setCount(v);
+    }
+    el.addEventListener('input', upd);
+    upd();
+  }
+  bind('count','count','vCount',0);
+  bind('sep','sep','vSep',1);
+  bind('ali','ali','vAli',1);
+  bind('coh','coh','vCoh',1);
+  bind('per','per','vPer',0);
+  bind('spd','spd','vSpd',1);
+  document.getElementById('trails').addEventListener('change', function(e){ P.trails = e.target.checked; });
+  document.getElementById('wrap').addEventListener('change', function(e){ P.wrap = e.target.checked; });
+  document.getElementById('mouseOn').addEventListener('change', function(e){ P.mouseOn = e.target.checked; });
+
+  // ---- mouse / touch ----
+  var mouse = { x:-9999, y:-9999, down:false, repel:false };
+  cv.addEventListener('mousemove', function(e){ mouse.x = e.clientX; mouse.y = e.clientY; });
+  cv.addEventListener('mousedown', function(e){ mouse.down = true; mouse.repel = (e.button === 2 || e.shiftKey); });
+  window.addEventListener('mouseup', function(){ mouse.down = false; });
+  cv.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  cv.addEventListener('mouseleave', function(){ mouse.x = -9999; mouse.y = -9999; });
+  cv.addEventListener('touchstart', function(e){ var t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY; mouse.down=true; }, {passive:true});
+  cv.addEventListener('touchmove',  function(e){ var t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY; }, {passive:true});
+  cv.addEventListener('touchend',   function(){ mouse.down=false; mouse.x=-9999; mouse.y=-9999; });
+
+  // ---- boids ----
+  var boids = [];
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function makeBoid(){
+    var a = rand(0, Math.PI*2), s = rand(1, P.spd);
+    return { x:rand(0,W), y:rand(0,H), vx:Math.cos(a)*s, vy:Math.sin(a)*s };
+  }
+  function setCount(n){
+    n = Math.round(n);
+    if (n > boids.length){ while (boids.length < n) boids.push(makeBoid()); }
+    else if (n < boids.length){ boids.length = n; }
+  }
+  function reset(){ boids = []; setCount(P.count); }
+  reset();
+
+  // spatial hash grid (keeps neighbor lookups near O(n))
+  var grid = new Map();
+  function key(cx,cy){ return cx + ',' + cy; }
+  function buildGrid(cell){
+    grid.clear();
+    for (var i=0;i<boids.length;i++){
+      var b = boids[i];
+      var k = key(Math.floor(b.x/cell), Math.floor(b.y/cell));
+      var arr = grid.get(k);
+      if (!arr){ arr = []; grid.set(k, arr); }
+      arr.push(b);
+    }
+  }
+  function limit(v, max){
+    var m = Math.hypot(v.x, v.y);
+    if (m > max){ v.x = v.x/m*max; v.y = v.y/m*max; }
+    return v;
+  }
+  function setMag(v, m){
+    var d = Math.hypot(v.x, v.y) || 1;
+    v.x = v.x/d*m; v.y = v.y/d*m;
+    return v;
+  }
+
+  var MAXF = 0.5; // base max steering force
+
+  function step(){
+    var per = P.per, per2 = per*per, cell = Math.max(per, 20);
+    buildGrid(cell);
+    for (var i=0;i<boids.length;i++){
+      var b = boids[i];
+      var sepX=0,sepY=0, aliX=0,aliY=0, cohX=0,cohY=0, nS=0,nA=0,nC=0;
+      var bcx = Math.floor(b.x/cell), bcy = Math.floor(b.y/cell);
+      for (var gx=bcx-1; gx<=bcx+1; gx++){
+        for (var gy=bcy-1; gy<=bcy+1; gy++){
+          var arr = grid.get(key(gx,gy));
+          if (!arr) continue;
+          for (var j=0;j<arr.length;j++){
+            var o = arr[j];
+            if (o === b) continue;
+            var dx = o.x - b.x, dy = o.y - b.y, d2 = dx*dx + dy*dy;
+            if (d2 > per2 || d2 === 0) continue;
+            var d = Math.sqrt(d2);
+            // separation: steer away, weighted by closeness
+            sepX -= dx/d/d; sepY -= dy/d/d; nS++;
+            // alignment
+            aliX += o.vx; aliY += o.vy; nA++;
+            // cohesion
+            cohX += o.x; cohY += o.y; nC++;
+          }
+        }
+      }
+      var ax=0, ay=0, v;
+      if (nS > 0){ v = {x:sepX, y:sepY}; setMag(v, P.spd); v.x-=b.vx; v.y-=b.vy; limit(v, MAXF); ax += v.x*P.sep; ay += v.y*P.sep; }
+      if (nA > 0){ v = {x:aliX/nA, y:aliY/nA}; setMag(v, P.spd); v.x-=b.vx; v.y-=b.vy; limit(v, MAXF); ax += v.x*P.ali; ay += v.y*P.ali; }
+      if (nC > 0){ v = {x:cohX/nC - b.x, y:cohY/nC - b.y}; setMag(v, P.spd); v.x-=b.vx; v.y-=b.vy; limit(v, MAXF); ax += v.x*P.coh; ay += v.y*P.coh; }
+
+      if (P.mouseOn && mouse.down){
+        var mdx = mouse.x - b.x, mdy = mouse.y - b.y, md = Math.hypot(mdx, mdy);
+        if (md < 200 && md > 0.001){
+          var dir = mouse.repel ? -1 : 1;
+          v = {x:mdx/md, y:mdy/md}; setMag(v, P.spd); v.x-=b.vx; v.y-=b.vy; limit(v, MAXF*3);
+          ax += v.x*dir*0.8; ay += v.y*dir*0.8;
+        }
+      }
+
+      b.vx += ax; b.vy += ay;
+      var sp = Math.hypot(b.vx, b.vy);
+      if (sp > P.spd){ b.vx = b.vx/sp*P.spd; b.vy = b.vy/sp*P.spd; }
+      else if (sp < 0.4){ var k2 = (sp||1); b.vx = b.vx/k2*0.4; b.vy = b.vy/k2*0.4; }
+
+      b.x += b.vx; b.y += b.vy;
+      if (P.wrap){
+        if (b.x < 0) b.x += W; else if (b.x > W) b.x -= W;
+        if (b.y < 0) b.y += H; else if (b.y > H) b.y -= H;
+      } else {
+        if (b.x < 0){ b.x = 0; b.vx = Math.abs(b.vx); } else if (b.x > W){ b.x = W; b.vx = -Math.abs(b.vx); }
+        if (b.y < 0){ b.y = 0; b.vy = Math.abs(b.vy); } else if (b.y > H){ b.y = H; b.vy = -Math.abs(b.vy); }
+      }
+    }
+  }
+
+  function draw(){
+    if (P.trails){
+      ctx.fillStyle = 'rgba(11,15,26,0.18)';
+      ctx.fillRect(0,0,W,H);
+    } else {
+      ctx.fillStyle = '#0b0f1a';
+      ctx.fillRect(0,0,W,H);
+    }
+    for (var i=0;i<boids.length;i++){
+      var b = boids[i];
+      var ang = Math.atan2(b.vy, b.vx);
+      var sp = Math.hypot(b.vx, b.vy);
+      var hue = 200 + (sp / P.spd) * 120; // blue (slow) -> pink (fast)
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.fillStyle = 'hsl(' + hue + ',85%,62%)';
+      ctx.beginPath();
+      ctx.moveTo(7, 0); ctx.lineTo(-5, 4); ctx.lineTo(-5, -4); ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (P.mouseOn && mouse.down && mouse.x > -9000){
+      ctx.beginPath();
+      ctx.arc(mouse.x, mouse.y, 200, 0, Math.PI*2);
+      ctx.strokeStyle = mouse.repel ? 'rgba(255,90,90,.5)' : 'rgba(78,161,255,.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  var paused = false;
+  var statsEl = document.getElementById('stats');
+  var frames = 0, lastT = performance.now(), fps = 0;
+
+  function loop(){
+    if (!paused) step();
+    draw();
+    frames++;
+    var now = performance.now();
+    if (now - lastT >= 500){
+      fps = Math.round(frames * 1000 / (now - lastT));
+      frames = 0; lastT = now;
+      statsEl.textContent = boids.length + ' boids · ' + fps + ' fps';
+    }
+    requestAnimationFrame(loop);
+  }
+
+  document.getElementById('pauseBtn').addEventListener('click', function(){
+    paused = !paused; this.textContent = paused ? '继续' : '暂停';
+  });
+  document.getElementById('resetBtn').addEventListener('click', reset);
+
+  loop();
+})();
+</script>
+</body>
+</html>
