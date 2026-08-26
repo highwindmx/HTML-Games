@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HTML-Games · 小游戏集合</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#1a2133; --panel2:#222b42;
+    --ink:#eef2fb; --sub:#9aa7c4; --line:#2c3650;
+    --blue:#4ea1ff; --coral:#ff8a5c; --green:#54d6a0; --gold:#ffd166;
+    --shadow:0 8px 28px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;min-height:100%;background:
+    radial-gradient(1200px 600px at 80% -10%, #1c2742 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, #1a2b3a 0%, transparent 55%),
+    var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:980px;margin:0 auto;padding:48px 20px 40px;}
+  header{text-align:center;margin-bottom:36px;}
+  h1{font-size:34px;margin:0 0 8px;letter-spacing:.5px;}
+  .tag{display:inline-block;font-size:13px;color:var(--sub);
+    border:1px solid var(--line);border-radius:999px;padding:5px 14px;margin-top:6px;}
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}
+  .card{position:relative;background:linear-gradient(160deg,var(--panel),var(--panel2));
+    border:1px solid var(--line);border-radius:18px;padding:22px 22px 20px;
+    box-shadow:var(--shadow);overflow:hidden;transition:transform .18s ease,border-color .18s ease;}
+  .card:hover{transform:translateY(-4px);border-color:var(--accent,#4ea1ff);}
+  .card .bar{height:4px;border-radius:4px;background:var(--accent,#4ea1ff);margin:-4px -4px 16px;}
+  .card h2{margin:0 0 4px;font-size:22px;}
+  .card .en{color:var(--sub);font-size:13px;margin-bottom:12px;}
+  .card p{color:var(--sub);font-size:14px;line-height:1.6;margin:0 0 16px;min-height:66px;}
+  .chip{display:inline-block;font-size:12px;color:var(--ink);background:rgba(255,255,255,.06);
+    border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin:0 6px 8px 0;}
+  .links{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;}
+  .btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+    font-size:14px;font-weight:600;color:#0f1420;background:var(--accent,#4ea1ff);
+    padding:9px 16px;border-radius:10px;transition:filter .15s ease;}
+  .btn:hover{filter:brightness(1.08);}
+  .btn.sub{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500;}
+  .btn.sub:hover{border-color:var(--accent,#4ea1ff);}
+  footer{text-align:center;color:var(--sub);font-size:13px;margin-top:38px;}
+  footer a{color:var(--blue);text-decoration:none;}
+  footer a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>HTML-Games</h1>
+    <div class="tag">零构建 · 双击即玩 · 个人作品集合</div>
+  </header>
+
+  <main class="grid">
+
+    <!-- Gravity -->
+    <section class="card" style="--accent:var(--blue)">
+      <div class="bar"></div>
+      <h2>引力弹道解谜</h2>
+      <div class="en">Gravity · 关卡式引力弹道</div>
+      <p>长按蓄力、调角度，把一枚无动力火箭甩过行星引力场，靠实时预测弹道命中远处目标。把引力当工具，绕行往往比直线更美。</p>
+      <span class="chip">原生 JS</span><span class="chip">Canvas</span><span class="chip">物理弹道</span>
+      <div class="links">
+        <a class="btn" href="gravity/index.html">进入游戏</a>
+      </div>
+    </section>
+
+    <!-- Hunt -->
+    <section class="card" style="--accent:var(--green)">
+      <div class="bar"></div>
+      <h2>弓猎</h2>
+      <div class="en">Hunt · 球面星球狩猎</div>
+      <p>在球形星球表面用弓箭狩猎熊 / 鹿 / 鸟三种猎物，按积分评优。支持计时与配额两种模式，以及多种难度徽章。手机浏览器可离线游玩。</p>
+      <span class="chip">Godot 4.7</span><span class="chip">Three.js</span><span class="chip">PWA 离线</span>
+      <div class="links">
+        <a class="btn" href="hunt/docs/index.html">进入（Godot 版）</a>
+        <a class="btn sub" href="hunt/web/index.html">网页版</a>
+      </div>
+    </section>
+
+    <!-- Warship -->
+    <section class="card" style="--accent:var(--gold)">
+      <div class="bar"></div>
+      <h2>风帆王者</h2>
+      <div class="en">Warship · 风帆舰队海战</div>
+      <p>风帆舰队海战：操舵借风、侧舷齐射、舰队 AI、升级与关卡。提供 2.5D 俯视与 3D 球面（地球仪）两种观战视角，玩法逻辑完全一致。</p>
+      <span class="chip">Phaser 3</span><span class="chip">Three.js</span><span class="chip">海战</span>
+      <div class="links">
+        <a class="btn" href="warship/25D/index.html">2.5D 版</a>
+        <a class="btn sub" href="warship/3D/index.html">3D 球面版</a>
+        <a class="btn sub" href="warship/archive/index.html">早期原型</a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    MIT License © 2026 highwindmx ·
+    <a href="https://github.com/highwindmx/HTML-Games" target="_blank" rel="noopener">GitHub 仓库</a>
+  </footer>
+</div>
+</body>
+</html>
