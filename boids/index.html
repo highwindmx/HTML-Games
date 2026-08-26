@@ -95,9 +95,24 @@
   window.addEventListener('resize', resize);
   resize();
 
+  // ---- boids data (declared before UI binding so setCount can run safely) ----
+  var boids = [];
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function makeBoid(){
+    var a = rand(0, Math.PI*2), s = rand(1, P.spd);
+    return { x:rand(0,W), y:rand(0,H), vx:Math.cos(a)*s, vy:Math.sin(a)*s };
+  }
+  function setCount(n){
+    n = Math.round(n);
+    if (n > boids.length){ while (boids.length < n) boids.push(makeBoid()); }
+    else if (n < boids.length){ boids.length = n; }
+  }
+  function reset(){ boids = []; setCount(P.count); }
+
   // ---- parameters (bound to UI) ----
   var P = { count:220, sep:1.6, ali:1.0, coh:1.0, per:60, spd:3.4,
             trails:true, wrap:true, mouseOn:true };
+  reset();
 
   function bind(id, key, valId, fix){
     var el = document.getElementById(id);
@@ -131,21 +146,6 @@
   cv.addEventListener('touchstart', function(e){ var t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY; mouse.down=true; }, {passive:true});
   cv.addEventListener('touchmove',  function(e){ var t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY; }, {passive:true});
   cv.addEventListener('touchend',   function(){ mouse.down=false; mouse.x=-9999; mouse.y=-9999; });
-
-  // ---- boids ----
-  var boids = [];
-  function rand(a,b){ return a + Math.random()*(b-a); }
-  function makeBoid(){
-    var a = rand(0, Math.PI*2), s = rand(1, P.spd);
-    return { x:rand(0,W), y:rand(0,H), vx:Math.cos(a)*s, vy:Math.sin(a)*s };
-  }
-  function setCount(n){
-    n = Math.round(n);
-    if (n > boids.length){ while (boids.length < n) boids.push(makeBoid()); }
-    else if (n < boids.length){ boids.length = n; }
-  }
-  function reset(){ boids = []; setCount(P.count); }
-  reset();
 
   // spatial hash grid (keeps neighbor lookups near O(n))
   var grid = new Map();
