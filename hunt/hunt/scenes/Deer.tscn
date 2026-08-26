@@ -1,0 +1,155 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scripts/Enemy.gd" id="1_enemy"]
+
+[sub_resource type="CapsuleShape3D" id="CapShape_deer"]
+radius = 0.4
+height = 2.2
+
+[sub_resource type="CapsuleMesh" id="Cap_deer"]
+radius = 0.32
+height = 1.5
+
+[sub_resource type="CylinderMesh" id="Cyl_leg"]
+top_radius = 0.05
+bottom_radius = 0.07
+height = 1.2
+
+[sub_resource type="CylinderMesh" id="Cyl_neck"]
+top_radius = 0.09
+bottom_radius = 0.13
+height = 0.8
+
+[sub_resource type="CylinderMesh" id="Cyl_antler"]
+top_radius = 0.02
+bottom_radius = 0.035
+height = 0.6
+
+[sub_resource type="SphereMesh" id="Sphere_head"]
+radius = 0.22
+height = 0.44
+
+[sub_resource type="SphereMesh" id="Sphere_snout"]
+radius = 0.12
+height = 0.24
+
+[sub_resource type="SphereMesh" id="Sphere_ear"]
+radius = 0.09
+height = 0.18
+
+[sub_resource type="BoxMesh" id="Box_tail"]
+size = Vector3(0.1, 0.1, 0.25)
+
+[sub_resource type="StandardMaterial3D" id="DeerMat"]
+albedo_color = Color(0.66, 0.47, 0.26, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="DeerLightMat"]
+albedo_color = Color(0.85, 0.72, 0.5, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="AntlerMat"]
+albedo_color = Color(0.34, 0.26, 0.15, 1)
+roughness = 0.7
+
+[sub_resource type="SphereShape3D" id="SphereShape_head"]
+radius = 0.32
+
+[node name="Enemy" type="CharacterBody3D"]
+script = ExtResource("1_enemy")
+enemy_type = "deer"
+collision_mask = 3
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.4, 0.05)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("Cap_deer")
+material_override = SubResource("DeerMat")
+
+[node name="Neck" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.85, -0.5)
+rotation = Vector3(-0.55, 0, 0)
+mesh = SubResource("Cyl_neck")
+material_override = SubResource("DeerMat")
+
+[node name="LegFL" type="MeshInstance3D" parent="."]
+position = Vector3(-0.22, -0.45, -0.55)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("DeerMat")
+
+[node name="LegFR" type="MeshInstance3D" parent="."]
+position = Vector3(0.22, -0.45, -0.55)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("DeerMat")
+
+[node name="LegBL" type="MeshInstance3D" parent="."]
+position = Vector3(-0.22, -0.45, 0.6)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("DeerMat")
+
+[node name="LegBR" type="MeshInstance3D" parent="."]
+position = Vector3(0.22, -0.45, 0.6)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("DeerMat")
+
+[node name="Tail" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.5, 0.85)
+rotation = Vector3(-0.5, 0, 0)
+mesh = SubResource("Box_tail")
+material_override = SubResource("DeerLightMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("CapShape_deer")
+
+[node name="Head" type="Area3D" parent="."]
+groups = ["enemy_head"]
+position = Vector3(0, 1.2, -0.78)
+
+[node name="Mesh" type="MeshInstance3D" parent="Head"]
+mesh = SubResource("Sphere_head")
+material_override = SubResource("DeerMat")
+
+[node name="Snout" type="MeshInstance3D" parent="Head"]
+position = Vector3(0, -0.07, -0.3)
+scale = Vector3(1, 0.85, 1.5)
+mesh = SubResource("Sphere_snout")
+material_override = SubResource("DeerLightMat")
+
+[node name="EarL" type="MeshInstance3D" parent="Head"]
+position = Vector3(-0.17, 0.2, 0.02)
+scale = Vector3(0.5, 1.3, 0.9)
+mesh = SubResource("Sphere_ear")
+material_override = SubResource("DeerMat")
+
+[node name="EarR" type="MeshInstance3D" parent="Head"]
+position = Vector3(0.17, 0.2, 0.02)
+scale = Vector3(0.5, 1.3, 0.9)
+mesh = SubResource("Sphere_ear")
+material_override = SubResource("DeerMat")
+
+[node name="AntlerL" type="MeshInstance3D" parent="Head"]
+position = Vector3(-0.13, 0.35, 0.02)
+rotation = Vector3(0, 0, 0.5)
+mesh = SubResource("Cyl_antler")
+material_override = SubResource("AntlerMat")
+
+[node name="AntlerL2" type="MeshInstance3D" parent="Head"]
+position = Vector3(-0.3, 0.55, 0.02)
+rotation = Vector3(0, 0, 1.0)
+mesh = SubResource("Cyl_antler")
+material_override = SubResource("AntlerMat")
+
+[node name="AntlerR" type="MeshInstance3D" parent="Head"]
+position = Vector3(0.13, 0.35, 0.02)
+rotation = Vector3(0, 0, -0.5)
+mesh = SubResource("Cyl_antler")
+material_override = SubResource("AntlerMat")
+
+[node name="AntlerR2" type="MeshInstance3D" parent="Head"]
+position = Vector3(0.3, 0.55, 0.02)
+rotation = Vector3(0, 0, -1.0)
+mesh = SubResource("Cyl_antler")
+material_override = SubResource("AntlerMat")
+
+[node name="Collision" type="CollisionShape3D" parent="Head"]
+shape = SubResource("SphereShape_head")

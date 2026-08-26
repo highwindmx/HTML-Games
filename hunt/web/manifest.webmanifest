@@ -1,0 +1,15 @@
+{
+  "name": "弓猎",
+  "short_name": "弓猎",
+  "description": "球面狩猎 · 蓄力弓射（纯 HTML5 / Three.js）",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#1B5E20",
+  "theme_color": "#1B5E20",
+  "icons": [
+    { "src": "./icon.png", "sizes": "any", "type": "image/png", "purpose": "any" },
+    { "src": "./apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

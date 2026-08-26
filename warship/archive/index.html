@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>风帆舰队对轰 · 原型</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a1a20; overflow: hidden; }
+  #game { width: 100vw; height: 100vh; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<!-- Phaser 本地 vendored，离线可跑 -->
+<script src="lib/phaser.min.js"></script>
+<!-- Three.js 本地 vendored（UMD 全局 THREE，经典 script 标签，file:// 离线可跑，零构建） -->
+<script src="lib/three.min.js"></script>
+<!-- 经典 script 标签，按依赖顺序加载，无需构建/服务器 -->
+<script src="src/config/constants.js"></script>
+<script src="src/core/KeyMap.js"></script>
+<script src="src/render/ShipSprite.js"></script>
+<script src="src/core/Wind.js"></script>
+<script src="src/core/Combat.js"></script>
+<script src="src/entities/Ship.js"></script>
+<script src="src/entities/Projectile.js"></script>
+<script src="src/ui/HUD.js"></script>
+<script src="src/config/levels.js"></script>
+<script src="src/core/RunState.js"></script>
+<script src="src/core/Upgrades.js"></script>
+<script src="src/core/FleetAI.js"></script>
+<!-- 3D 球体渲染层（Three.js）：GlobeRenderer / ShipMesh / FX -->
+<script src="src/render3d/GlobeRenderer.js"></script>
+<script src="src/render3d/ShipMesh.js"></script>
+<script src="src/render3d/FX.js"></script>
+<script src="src/scenes/MenuScene.js"></script>
+<script src="src/scenes/KeyBindScene.js"></script>
+<script src="src/scenes/BattleScene.js"></script>
+<script src="src/scenes/ResultScene.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>

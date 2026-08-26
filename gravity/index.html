@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gravity · 引力弹道解谜 MVP</title>
+<style>
+  :root{
+    --bg:#f7f9fc; --panel:#ffffff; --ink:#2c2c2a; --sub:#5f5e5a;
+    --blue:#185fa5; --blue50:#e6f1fb; --coral:#d85a30; --coral50:#f5c4b3;
+    --green:#3b6d11; --green50:#e7f0d8; --teal:#0f6e56;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-user-select:none;user-select:none;}
+  #wrap{max-width:960px;margin:0 auto;padding:8px 10px 16px;}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:6px 10px;background:var(--panel);border:1px solid #e3e7ee;border-radius:10px;margin-bottom:8px;}
+  .bar .l{font-size:15px;font-weight:700;}
+  .bar .r{font-size:12px;color:var(--sub);display:flex;gap:14px;}
+  .bar .r b{color:var(--ink);font-weight:700;}
+  /* 用 padding-top 撑高度，兼容不认 aspect-ratio 的 WebView（避免画布高度塌缩成 0） */
+  #stage{position:relative;width:100%;padding-top:56.25%;background:var(--bg);
+    border:1px solid #e3e7ee;border-radius:12px;overflow:hidden;}
+  canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;}
+  /* 左上角徽章等级列 */
+  #badgeTray{position:absolute;top:8px;left:8px;display:flex;flex-wrap:wrap;gap:5px;
+    background:rgba(255,255,255,.72);border:1px solid #e3e7ee;border-radius:8px;padding:5px 7px;
+    font-size:11px;z-index:4;max-width:62%;}
+  #badgeTray .bi{display:flex;align-items:center;gap:2px;color:var(--sub);}
+  #badgeTray .bi b{color:var(--ink);font-weight:700;}
+  #badgeTray .t3{color:#c79100;} #badgeTray .t2{color:#8a8f98;} #badgeTray .t1{color:#b5752e;}
+  #winpill{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:6px;
+    background:var(--panel);border:1px solid #e3e7ee;border-radius:10px;padding:8px 10px;
+    box-shadow:0 6px 20px rgba(0,0,0,.1);z-index:5;}
+  #winBadge{font-size:12px;font-weight:700;color:#8a6d1a;}
+  .pillbtns{display:flex;gap:8px;}
+  button{font:inherit;font-size:14px;font-weight:600;padding:9px 16px;border-radius:9px;
+    border:1px solid transparent;cursor:pointer;transition:transform .05s;}
+  button:active{transform:translateY(1px);}
+  .b-primary{background:var(--blue);color:#fff;}
+  .b-ghost{background:var(--panel);border-color:#d7dde6;color:var(--ink);}
+  .hint{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.5;text-align:center;}
+  .levels{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px;}
+  .lvl{font:inherit;font-size:13px;font-weight:700;width:34px;height:34px;border-radius:9px;
+    border:1px solid #d7dde6;background:var(--panel);color:var(--sub);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0;}
+  .lvl.on{background:var(--blue);color:#fff;border-color:var(--blue);}
+  .lvl.lock{opacity:.4;cursor:not-allowed;}
+  .levels .sep{width:1px;align-self:stretch;background:#e3e7ee;margin:0 4px;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="bar">
+    <div class="l" id="levelName">第 1 关</div>
+    <div class="r">
+      <span>本关尝试 <b id="attempts">0</b></span>
+      <span>角度 <b id="angle">–</b></span>
+      <span>燃料 <b id="power">–</b></span>
+    </div>
+  </div>
+  <div id="stage">
+    <canvas id="cv" width="960" height="540"></canvas>
+    <div id="badgeTray"></div>
+    <div id="winpill">
+      <div id="winBadge"></div>
+      <div class="pillbtns">
+        <button id="nextBtn" class="b-primary">下一关</button>
+        <button id="replayBtn" class="b-ghost">重玩</button>
+      </div>
+    </div>
+  </div>
+  <div class="hint">在画面任意处<b>按住向后拖拽</b>蓄力（像弹弓），松手发射；燃料越少、尝试越少，徽章越高级。</div>
+  <div id="levels" class="levels"></div>
+</div>
+
+<script>
+"use strict";
+// ===== 全局物理常量（全部 [PLACEHOLDER · 假设值，待 playtest 调]）=====
+const W = 960, H = 540;
+const DT = 1/120;
+const G = 800;
+const V0_MAX = 700;              // 燃料满格对应初速
+const V_MAX = 1200;
+const T_MAX = 12;
+const MAX_PULL = 240;
+
+// ===== 天体类型（视觉 + 引力场风格；物理只看 mu）=====
+const BODY_TYPES = {
+  planet:   {fill:"#f5c4b3", stroke:"#d85a30", label:"行星"},
+  star:     {fill:"#ffd76b", stroke:"#e0a106", label:"恒星"},
+  moon:     {fill:"#d9dde3", stroke:"#9aa3ad", label:"卫星"},
+  satellite:{fill:"#cdd3dc", stroke:"#7f8893", label:"卫"},
+  blackhole:{fill:"#0c0c12", stroke:"#7a4bff", label:"黑洞"},
+  redgiant: {fill:"#ff8a5c", stroke:"#c4421f", label:"红巨星"},
+};
+
+// 黑洞配对提示：用「颜色 + 形状」区分不同对（不使用连线）。每对一组色+形。
+const PAIR_PALETTE = ["#27d0ff", "#ff5fa2", "#ffb13b", "#7CFF6B"]; // 青 / 粉 / 琥珀 / 绿
+const PAIR_SHAPES  = ["circle", "diamond", "triangle", "square"];   // 圆 / 菱形 / 三角 / 方
+
+// ===== 徽章评级（按尝试数 + 燃料加权，越少越好）=====
+// score = 尝试×1.0 + 燃料占比×3.0（燃料权重更高）；阈值 [PLACEHOLDER]
+function computeTier(attempts, fuelFrac){
+  const score = attempts*1.0 + fuelFrac*3.0;
+  if(score <= 4) return 3;       // 金
+  if(score <= 8) return 2;       // 银
+  return 1;                      // 铜
+}
+const TIER = { 3:{n:"金",ic:"🥇"}, 2:{n:"银",ic:"🥈"}, 1:{n:"铜",ic:"🥉"} };
+
+// ===== 关卡定义（按难度组合；元素可在单关出现 1 或多个）=====
+// 黑洞必成对（id/pair）；卫星绕父行星公转（orbit）。
+const LEVELS = [
+  // 约束：每颗行星各带一颗卫星（planet⇔satellite 逐体成立）；每关签名(类型:数量)唯一；实心天体关直线必被挡(P3)
+  // 难度序：恒星(star) < 行星(planet,必带卫星) ；黑洞作为横向机制叠加。故 L1=恒星, L2=单行星, 之后逐步叠数量与黑洞。
+  // 新插入：L3 双恒星(star×2) / L8 双恒星+一对黑洞(star×2+blackhole×2) / 第 5 章 L13-L18「两队黑洞」系列(blackhole×4，叠加星/行星)。
+  // 黑洞配对提示用「颜色+形状」呈现（见 drawBody），不使用连线。
+  // —— 第 1 章：天体入门（恒星 → 单行星 → 双恒星 → 双行星，每行星带卫星）——
+  { name:"第 1 关 · 单恒星",                             // 签名: star×1（最易，无行星/卫星）
+    launch:{x:120,y:430}, target:{x:830,y:150,r:24},
+    bodies:[{type:"star",x:475,y:290,R:44,mu:G*30000}] },
+  { name:"第 2 关 · 行星+卫星",                          // 签名: planet×1 + satellite×1
+    launch:{x:120,y:200}, target:{x:840,y:430,r:24},
+    bodies:[{type:"planet",x:480,y:315,R:56,mu:G*17000},
+            {type:"satellite",R:18,mu:G*6000,
+             orbit:{cx:480,cy:315,R:95,omega:0.9,theta0:0}}] },
+  { name:"第 3 关 · 双恒星",                             // 签名: star×2（双恒星纯恒星关，直线被其中一星挡住）
+    launch:{x:120,y:430}, target:{x:840,y:150,r:24},
+    bodies:[{type:"star",x:480,y:290,R:44,mu:G*26000},
+            {type:"star",x:700,y:200,R:38,mu:G*20000}] },
+  { name:"第 4 关 · 双行星+双卫星",                       // 签名: planet×2 + satellite×2（每行星各带一卫星）
+    launch:{x:120,y:430}, target:{x:830,y:120,r:22},
+    bodies:[{type:"planet",x:475,y:275,R:50,mu:G*14000},
+            {type:"satellite",R:16,mu:G*5000,
+             orbit:{cx:475,cy:275,R:72,omega:0.9,theta0:0}},
+            {type:"planet",x:700,y:430,R:46,mu:G*13000},
+            {type:"satellite",R:15,mu:G*4500,
+             orbit:{cx:700,cy:430,R:70,omega:-0.9,theta0:1.0}}] },
+  { name:"第 5 关 · 行星+卫星+恒星",                     // 签名: planet×1 + satellite×1 + star×1
+    launch:{x:120,y:430}, target:{x:860,y:90,r:20},
+    bodies:[{type:"planet",x:490,y:260,R:50,mu:G*15000},
+            {type:"satellite",R:18,mu:G*6000,
+             orbit:{cx:490,cy:260,R:76,omega:0.9,theta0:0}},
+            {type:"star",x:250,y:420,R:34,mu:G*20000}] },
+  // —— 第 2 章：引入虫洞（恒星/行星混搭）——
+  { name:"第 6 关 · 恒星+虫洞",                          // 签名: star×1 + blackhole×2（虫洞入门，恒星挡直线）
+    launch:{x:120,y:270}, target:{x:840,y:270,r:22},
+    bodies:[{type:"star",x:480,y:270,R:40,mu:G*24000},
+            {type:"blackhole",x:300,y:150,R:30,mu:G*16000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:660,y:150,R:30,mu:G*16000,id:"h1",pair:"h0"}] },
+  { name:"第 7 关 · 行星+卫星+虫洞",                      // 签名: planet×1 + satellite×1 + blackhole×2
+    launch:{x:120,y:270}, target:{x:850,y:300,r:22},
+    bodies:[{type:"planet",x:470,y:285,R:50,mu:G*18000},
+            {type:"satellite",R:16,mu:G*5500,
+             orbit:{cx:470,cy:285,R:90,omega:-1.0,theta0:2.0}},
+            {type:"blackhole",x:300,y:440,R:30,mu:G*16000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:650,y:440,R:30,mu:G*16000,id:"h1",pair:"h0"}] },
+  { name:"第 8 关 · 双恒星+虫洞",                        // 签名: star×2 + blackhole×2（2 恒星 + 一对黑洞）
+    launch:{x:120,y:430}, target:{x:840,y:150,r:22},
+    bodies:[{type:"star",x:480,y:290,R:42,mu:G*22000},
+            {type:"star",x:680,y:200,R:34,mu:G*18000},
+            {type:"blackhole",x:300,y:150,R:30,mu:G*15000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:640,y:440,R:30,mu:G*15000,id:"h1",pair:"h0"}] },
+  // —— 第 3 章：全元素组合（双行星带双卫星 作为"更难"基底）——
+  { name:"第 9 关 · 双行星+双卫星+恒星",                  // 签名: planet×2 + satellite×2 + star×1
+    launch:{x:120,y:430}, target:{x:860,y:90,r:20},
+    bodies:[{type:"planet",x:490,y:260,R:48,mu:G*15000},
+            {type:"satellite",R:16,mu:G*5000,
+             orbit:{cx:490,cy:260,R:74,omega:0.9,theta0:0}},
+            {type:"planet",x:720,y:360,R:44,mu:G*13000},
+            {type:"satellite",R:14,mu:G*4500,
+             orbit:{cx:720,cy:360,R:70,omega:-0.9,theta0:1.0}},
+            {type:"star",x:250,y:150,R:38,mu:G*22000}] },
+  { name:"第 10 关 · 双行星+双卫星+虫洞",                 // 签名: planet×2 + satellite×2 + blackhole×2
+    launch:{x:120,y:270}, target:{x:850,y:300,r:22},
+    bodies:[{type:"planet",x:470,y:285,R:50,mu:G*18000},
+            {type:"satellite",R:16,mu:G*5500,
+             orbit:{cx:470,cy:285,R:90,omega:0.9,theta0:0}},
+            {type:"planet",x:250,y:430,R:44,mu:G*14000},
+            {type:"satellite",R:14,mu:G*4500,
+             orbit:{cx:250,cy:430,R:70,omega:-0.9,theta0:1.0}},
+            {type:"blackhole",x:700,y:140,R:30,mu:G*16000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:700,y:430,R:30,mu:G*16000,id:"h1",pair:"h0"}] },
+  { name:"第 11 关 · 行星+卫星+恒星+虫洞",                // 签名: planet×1 + satellite×1 + star×1 + blackhole×2
+    launch:{x:120,y:270}, target:{x:860,y:270,r:20},
+    bodies:[{type:"star",x:490,y:270,R:40,mu:G*24000},
+            {type:"planet",x:320,y:400,R:44,mu:G*15000},
+            {type:"satellite",R:14,mu:G*4500,
+             orbit:{cx:320,cy:400,R:72,omega:1.0,theta0:0}},
+            {type:"blackhole",x:250,y:140,R:28,mu:G*14000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:720,y:140,R:28,mu:G*14000,id:"h1",pair:"h0"}] },
+  { name:"第 12 关 · 全元素 Boss",                        // 签名: planet×2 + satellite×2 + star×1 + blackhole×2
+    launch:{x:120,y:270}, target:{x:480,y:480,r:18},
+    bodies:[{type:"planet",x:300,y:375,R:46,mu:G*15000},
+            {type:"satellite",R:14,mu:G*4500,
+             orbit:{cx:300,cy:375,R:72,omega:0.9,theta0:0}},
+            {type:"planet",x:640,y:200,R:44,mu:G*15000},
+            {type:"satellite",R:13,mu:G*4200,
+             orbit:{cx:640,cy:200,R:70,omega:-0.9,theta0:1.0}},
+            {type:"star",x:500,y:290,R:34,mu:G*20000},
+            {type:"blackhole",x:820,y:120,R:28,mu:G*14000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:820,y:430,R:28,mu:G*14000,id:"h1",pair:"h0"}] },
+  // —— 第 5 章：两队黑洞系列（每关含 2 对虫洞 blackhole×4，叠加星/行星/卫星；配对用颜色+形状提示）——
+  { name:"第 13 关 · 两队黑洞入门",                      // 签名: blackhole×4（纯虫洞链接教学，无实心体）
+    launch:{x:120,y:270}, target:{x:850,y:270,r:22},
+    bodies:[{type:"blackhole",x:330,y:200,R:32,mu:G*13000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:330,y:400,R:32,mu:G*13000,id:"h1",pair:"h0"},
+            {type:"blackhole",x:640,y:200,R:32,mu:G*13000,id:"h2",pair:"h3"},
+            {type:"blackhole",x:640,y:400,R:32,mu:G*13000,id:"h3",pair:"h2"}] },
+  { name:"第 14 关 · 恒星+两队黑洞",                     // 签名: star×1 + blackhole×4（恒星挡直线）
+    launch:{x:120,y:270}, target:{x:850,y:270,r:22},
+    bodies:[{type:"star",x:480,y:270,R:40,mu:G*24000},
+            {type:"blackhole",x:300,y:140,R:30,mu:G*13000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:300,y:420,R:30,mu:G*13000,id:"h1",pair:"h0"},
+            {type:"blackhole",x:660,y:140,R:30,mu:G*13000,id:"h2",pair:"h3"},
+            {type:"blackhole",x:660,y:420,R:30,mu:G*13000,id:"h3",pair:"h2"}] },
+  { name:"第 15 关 · 行星卫星+两队黑洞",                 // 签名: planet×1 + satellite×1 + blackhole×4
+    launch:{x:120,y:430}, target:{x:850,y:120,r:22},
+    bodies:[{type:"planet",x:470,y:300,R:56,mu:G*17000},
+            {type:"satellite",R:18,mu:G*6000,
+             orbit:{cx:470,cy:300,R:95,omega:0.9,theta0:0}},
+            {type:"blackhole",x:300,y:140,R:30,mu:G*13000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:300,y:420,R:30,mu:G*13000,id:"h1",pair:"h0"},
+            {type:"blackhole",x:720,y:140,R:30,mu:G*13000,id:"h2",pair:"h3"},
+            {type:"blackhole",x:720,y:420,R:30,mu:G*13000,id:"h3",pair:"h2"}] },
+  { name:"第 16 关 · 双行星卫星+两队黑洞",               // 签名: planet×2 + satellite×2 + blackhole×4
+    launch:{x:120,y:430}, target:{x:860,y:90,r:20},
+    bodies:[{type:"planet",x:400,y:300,R:50,mu:G*14000},
+            {type:"satellite",R:16,mu:G*5000,
+             orbit:{cx:400,cy:300,R:74,omega:0.9,theta0:0}},
+            {type:"planet",x:680,y:200,R:46,mu:G*13000},
+            {type:"satellite",R:14,mu:G*4500,
+             orbit:{cx:680,cy:200,R:70,omega:-0.9,theta0:1.0}},
+            {type:"blackhole",x:280,y:150,R:28,mu:G*12000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:280,y:430,R:28,mu:G*12000,id:"h1",pair:"h0"},
+            {type:"blackhole",x:820,y:150,R:28,mu:G*12000,id:"h2",pair:"h3"},
+            {type:"blackhole",x:820,y:430,R:28,mu:G*12000,id:"h3",pair:"h2"}] },
+  { name:"第 17 关 · 行星卫星+恒星+两队黑洞",            // 签名: planet×1 + satellite×1 + star×1 + blackhole×4
+    launch:{x:120,y:430}, target:{x:860,y:90,r:20},
+    bodies:[{type:"planet",x:470,y:300,R:50,mu:G*15000},
+            {type:"satellite",R:16,mu:G*5000,
+             orbit:{cx:470,cy:300,R:76,omega:0.9,theta0:0}},
+            {type:"star",x:260,y:160,R:36,mu:G*20000},
+            {type:"blackhole",x:300,y:430,R:28,mu:G*12000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:660,y:430,R:28,mu:G*12000,id:"h1",pair:"h0"},
+            {type:"blackhole",x:300,y:150,R:28,mu:G*12000,id:"h2",pair:"h3"},
+            {type:"blackhole",x:660,y:150,R:28,mu:G*12000,id:"h3",pair:"h2"}] },
+  { name:"第 18 关 · 全元素+两队黑洞 Boss",              // 签名: planet×2 + satellite×2 + star×1 + blackhole×4
+    launch:{x:120,y:270}, target:{x:880,y:470,r:18},
+    bodies:[{type:"planet",x:430,y:330,R:52,mu:G*15000},
+            {type:"satellite",R:15,mu:G*5000,
+             orbit:{cx:430,cy:330,R:78,omega:0.9,theta0:0}},
+            {type:"planet",x:680,y:160,R:46,mu:G*14000},
+            {type:"satellite",R:13,mu:G*4200,
+             orbit:{cx:680,cy:160,R:72,omega:-0.9,theta0:1.0}},
+            {type:"star",x:300,y:150,R:36,mu:G*20000},
+            {type:"blackhole",x:820,y:120,R:28,mu:G*13000,id:"h0",pair:"h1"},
+            {type:"blackhole",x:820,y:430,R:28,mu:G*13000,id:"h1",pair:"h0"},
+            {type:"blackhole",x:250,y:430,R:28,mu:G*13000,id:"h2",pair:"h3"},
+            {type:"blackhole",x:560,y:450,R:28,mu:G*13000,id:"h3",pair:"h2"}] },
+];
+
+// ===== 状态 =====
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let levelIdx = 0;
+let level = LEVELS[0];
+let phase = "aim";               // aim | flying | won
+let levelAttempts = 0;           // 本关尝试数（徽章用）
+let lastWinFuelFrac = 0;         // 本关命中时燃料占比
+let passedSet = new Set(JSON.parse(localStorage.getItem("gg_passed")||"[]"));  // 已通过关卡集合
+// 读取并清洗：仅保留合法 tier(1/2/3)；旧版本曾存图标字符串等非数字值，会导致 TIER[tier] 为 undefined 崩溃
+let badgeTiers = {};
+try{
+  const raw = JSON.parse(localStorage.getItem("gg_badges")||"{}");
+  if(raw && typeof raw==="object" && !Array.isArray(raw)){
+    for(const k in raw){ const v = raw[k]; if(v===1||v===2||v===3) badgeTiers[k]=v; }
+  }
+}catch(e){ badgeTiers = {}; }
+let newTier = 0;                 // 本次是否刷新更高级徽章
+let rocket = null;
+let ghostTrail = null;
+let aim = null;
+let acc = 0, simT = 0, winRingT = 0;
+let worldT = 0;                  // 全局时间，驱动卫星公转 / 黑洞虫洞
+
+// ===== 天体当前位置（卫星随 worldT 公转）=====
+function bodyPos(b){
+  if(b.type==="satellite"){
+    const o=b.orbit, th=o.theta0 + o.omega*worldT;
+    return {x:o.cx + Math.cos(th)*o.R, y:o.cy + Math.sin(th)*o.R};
+  }
+  return {x:b.x, y:b.y};
+}
+
+// 颜色 + alpha，用于按配对上色
+function hexA(hex,a){
+  const h=hex.replace("#","");
+  const n=parseInt(h.length===3 ? h.split("").map(c=>c+c).join("") : h,16);
+  return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")";
+}
+// 配对形状提示（画在事件视界中心，纯几何无连线）
+function drawPairGlyph(x,y,r,shape,color){
+  const s=r*0.4; ctx.fillStyle=color; ctx.beginPath();
+  if(shape==="diamond"){ ctx.moveTo(x,y-s); ctx.lineTo(x+s,y); ctx.lineTo(x,y+s); ctx.lineTo(x-s,y); ctx.closePath(); }
+  else if(shape==="triangle"){ ctx.moveTo(x,y-s); ctx.lineTo(x+s*0.87,y+s*0.5); ctx.lineTo(x-s*0.87,y+s*0.5); ctx.closePath(); }
+  else if(shape==="square"){ ctx.rect(x-s,y-s,2*s,2*s); }
+  else { ctx.arc(x,y,s,0,7); }   // circle
+  ctx.fill();
+}
+// 关卡加载时为每对黑洞分配「颜色+形状」（同一对共享一组）
+function assignPairStyles(){
+  const byId={}; level.bodies.forEach(b=>{ if(b.type==="blackhole") byId[b.id]=b; });
+  const groups=[]; const done=new Set();
+  for(const b of level.bodies){
+    if(b.type!=="blackhole" || done.has(b.id)) continue;
+    const partner=byId[b.pair];
+    const tag=[b.id,b.pair].sort().join("~");
+    let g=groups.find(p=>p.tag===tag);
+    if(!g){ const i=groups.length; g={tag,color:PAIR_PALETTE[i%PAIR_PALETTE.length],shape:PAIR_SHAPES[i%PAIR_SHAPES.length]}; groups.push(g); }
+    b._color=g.color; b._shape=g.shape;
+    if(partner){ partner._color=g.color; partner._shape=g.shape; }
+    done.add(b.id); done.add(b.pair);
+  }
+}
+
+// ===== 物理：加速度（多体叠加）=====
+function accel(x, y){
+  let ax=0, ay=0;
+  for(const b of level.bodies){
+    const p = bodyPos(b);
+    const dx = p.x - x, dy = p.y - y;
+    const r = Math.hypot(dx, dy) || 1e-6;
+    const rc = Math.max(r, b.R);
+    const a = b.mu / (rc*rc);
+    ax += a * dx / r;  ay += a * dy / r;
+  }
+  return [ax, ay];
+}
+
+// 固定步长推进（半隐式欧拉，确定性）。返回事件：null/"crash"/"out"/"win"/"timeout"
+function step(s){
+  const [ax, ay] = accel(s.x, s.y);
+  s.vx += ax*DT;  s.vy += ay*DT;
+  const sp = Math.hypot(s.vx, s.vy);
+  if(sp > V_MAX){ s.vx *= V_MAX/sp; s.vy *= V_MAX/sp; }
+  s.x += s.vx*DT;  s.y += s.vy*DT;
+  // 黑洞虫洞：进入一个 → 从成对另一个沿原速度方向射出，速度向量完整保留
+  for(const b of level.bodies){
+    if(b.type!=="blackhole") continue;
+    const p = bodyPos(b);
+    const d = Math.hypot(p.x-s.x, p.y-s.y);
+    if(b.id === s.justTeleported){
+      if(d > b.R+20) s.justTeleported = null;   // 远离后解除冷却
+      continue;
+    }
+    if(d <= b.R){
+      const other = level.bodies.find(o=>o.id===b.pair);
+      const op = bodyPos(other);
+      const ux = s.vx/(sp||1), uy = s.vy/(sp||1);
+      s.x = op.x + ux*(other.R+10);
+      s.y = op.y + uy*(other.R+10);
+      s.justTeleported = other.id;
+      s.trail.push({jump:true});                // 轨迹断裂标记，避免跨屏连线
+      return null;
+    }
+  }
+  // 实心天体碰撞 = 失败（黑洞不在此列）
+  for(const b of level.bodies){
+    if(b.type==="blackhole") continue;
+    const p = bodyPos(b);
+    if(Math.hypot(p.x-s.x, p.y-s.y) <= b.R) return "crash";
+  }
+  if(s.x < -60 || s.x > W+60 || s.y < -60 || s.y > H+60) return "out";
+  if(Math.hypot(level.target.x-s.x, level.target.y-s.y) <= level.target.r) return "win";
+  return null;
+}
+
+// ===== 输入（弹弓式）=====
+function toLogical(e){
+  const rect = cv.getBoundingClientRect();
+  return { x:(e.clientX-rect.left)/rect.width*W, y:(e.clientY-rect.top)/rect.height*H };
+}
+function updateAim(p){
+  const L = level.launch;
+  let dx = L.x - p.x, dy = L.y - p.y;
+  const pull = Math.min(Math.hypot(dx,dy), MAX_PULL);
+  if(pull < 1){ aim=null; return; }
+  const dirx = dx/Math.hypot(dx,dy), diry = dy/Math.hypot(dx,dy);
+  const power = pull/MAX_PULL * V0_MAX;
+  aim = { dirx, diry, power, vx:dirx*power, vy:diry*power };
+  const ang = (Math.atan2(diry, dirx)*180/Math.PI + 360)%360;
+  document.getElementById("angle").textContent = ang.toFixed(0)+"°";
+  document.getElementById("power").textContent = (power/V0_MAX*100).toFixed(0)+"%";
+}
+cv.addEventListener("pointerdown", e=>{
+  ensureAudio();
+  if(phase!=="aim") return;
+  cv.setPointerCapture(e.pointerId);
+  updateAim(toLogical(e));
+});
+cv.addEventListener("pointermove", e=>{
+  if(phase!=="aim" || !cv.hasPointerCapture(e.pointerId)) return;
+  updateAim(toLogical(e));
+});
+cv.addEventListener("pointerup", e=>{
+  if(phase!=="aim" || !aim) return;
+  fire();
+});
+
+function fire(){
+  levelAttempts++;
+  document.getElementById("attempts").textContent = levelAttempts;
+  rocket = {x:level.launch.x, y:level.launch.y, vx:aim.vx, vy:aim.vy,
+            trail:[], justTeleported:null};
+  lastWinFuelFrac = aim.power / V0_MAX;
+  phase = "flying"; acc = 0; simT = 0; aim = null;
+  beep(220,0.15,"sawtooth");
+}
+
+// ===== 渲染 =====
+function drawScene(){
+  ctx.clearRect(0,0,W,H);
+  for(const b of level.bodies) drawBody(b);
+  const t = level.target;
+  drawAlien(t.x, t.y, t.r);
+  drawLauncher(level.launch);
+}
+
+function drawBody(b){
+  const T = BODY_TYPES[b.type] || BODY_TYPES.planet;
+  const p = bodyPos(b);
+  // 卫星公转轨道环
+  if(b.type==="satellite"){
+    ctx.beginPath(); ctx.arc(b.orbit.cx,b.orbit.cy,b.orbit.R,0,7);
+    ctx.strokeStyle="rgba(127,136,147,.35)"; ctx.setLineDash([3,5]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+  }
+  // 引力场环
+  const rings = b.type==="blackhole" ? [b.R*3.4,b.R*2.4,b.R*1.6]
+              : b.type==="star"      ? [b.R*3.0,b.R*2.1,b.R*1.4]
+              :                          [b.R*2.6,b.R*1.9,b.R*1.3];
+  const ringCol = b.type==="blackhole" ? hexA(b._color||"#7a4bff",.22)
+                : b.type==="star"      ? "rgba(224,161,6,.20)"
+                :                          "rgba(216,90,48,.18)";
+  for(const rr of rings){
+    ctx.beginPath(); ctx.arc(p.x,p.y,rr,0,7);
+    ctx.strokeStyle=ringCol; ctx.setLineDash([3,6]); ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(b.type==="blackhole"){
+    const col = b._color || "#7a4bff";
+    ctx.beginPath(); ctx.arc(p.x,p.y,b.R*1.5,0,7);
+    ctx.strokeStyle=hexA(col,.55); ctx.lineWidth=3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(p.x,p.y,b.R,0,7); ctx.fillStyle="#0c0c12"; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle=col; ctx.stroke();
+    drawPairGlyph(p.x,p.y,b.R, b._shape||"circle", col);   // 配对提示：形状+颜色，无连线
+  } else if(b.type==="star"){
+    const g=ctx.createRadialGradient(p.x,p.y,b.R*0.3,p.x,p.y,b.R);
+    g.addColorStop(0,"#fff3c4"); g.addColorStop(1,T.fill);
+    ctx.beginPath(); ctx.arc(p.x,p.y,b.R,0,7); ctx.fillStyle=g; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle=T.stroke; ctx.stroke();
+    ctx.strokeStyle="rgba(224,161,6,.5)"; ctx.lineWidth=2;
+    for(let i=0;i<8;i++){ const a=i*Math.PI/4;
+      ctx.beginPath();
+      ctx.moveTo(p.x+Math.cos(a)*b.R*1.05, p.y+Math.sin(a)*b.R*1.05);
+      ctx.lineTo(p.x+Math.cos(a)*b.R*1.28, p.y+Math.sin(a)*b.R*1.28);
+      ctx.stroke();
+    }
+  } else {
+    ctx.beginPath(); ctx.arc(p.x,p.y,b.R,0,7); ctx.fillStyle=T.fill; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle=T.stroke; ctx.stroke();
+    if(b.type==="moon" || b.type==="satellite"){
+      ctx.fillStyle="rgba(120,128,140,.35)";
+      ctx.beginPath(); ctx.arc(p.x-b.R*0.3,p.y-b.R*0.2,b.R*0.18,0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x+b.R*0.25,p.y+b.R*0.3,b.R*0.13,0,7); ctx.fill();
+    }
+  }
+  ctx.fillStyle = b.type==="blackhole" ? (b._color||"#b9a6ff") : T.stroke;
+  ctx.font="12px sans-serif"; ctx.textAlign="center";
+  ctx.fillText(T.label, p.x, p.y - b.R - 8);
+}
+
+function drawLauncher(L){
+  const x=L.x, y=L.y;
+  const ready = (phase==="aim");                 // 可发射 vs 发射后 两套样式
+  const t = performance.now()/1000;
+  const pulse = ready ? (0.5+0.5*Math.sin(t*4)) : 0;   // 仅可发射时脉动
+  // 外环：可发射时发光脉动，发射后暗淡
+  ctx.beginPath(); ctx.arc(x,y,20,0,7);
+  if(ready){ ctx.strokeStyle="rgba(58,160,255,"+(0.35+0.45*pulse)+")"; ctx.lineWidth=2+1.5*pulse; }
+  else { ctx.strokeStyle="rgba(120,140,160,.30)"; ctx.lineWidth=2; }
+  ctx.stroke();
+  // 六边形基座
+  ctx.beginPath();
+  for(let i=0;i<6;i++){ const a=Math.PI/2 + i*Math.PI/3; const px=x+Math.cos(a)*16, py=y+9+Math.sin(a)*8;
+    i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+  ctx.closePath();
+  ctx.fillStyle = ready ? "#0d3a63" : "#28323c"; ctx.fill();
+  ctx.lineWidth=1.5; ctx.strokeStyle = ready ? "#3aa0ff" : "#5a6b78"; ctx.stroke();
+  // 发射筒
+  ctx.beginPath(); ctx.moveTo(x-7,y+6); ctx.lineTo(x+7,y+6);
+  ctx.lineTo(x+4,y-14); ctx.lineTo(x-4,y-14); ctx.closePath();
+  ctx.fillStyle = ready ? "#185fa5" : "#3a4654"; ctx.fill();
+  ctx.strokeStyle = ready ? "#7ec8ff" : "#6b7b88"; ctx.lineWidth=1; ctx.stroke();
+  // 发光核心
+  const g=ctx.createRadialGradient(x,y-14,1,x,y-14,9);
+  if(ready){ g.addColorStop(0,"#bff0ff"); g.addColorStop(1,"rgba(24,95,165,0)"); }
+  else { g.addColorStop(0,"#6c7a88"); g.addColorStop(1,"rgba(40,50,60,0)"); }
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y-14,9,0,7); ctx.fill();
+  // 可发射时额外脉冲光晕
+  if(ready){
+    ctx.beginPath(); ctx.arc(x,y-14, 6+5*pulse, 0, 7);
+    ctx.strokeStyle="rgba(126,200,255,"+(0.25+0.4*pulse)+")"; ctx.lineWidth=2; ctx.stroke();
+  }
+  // 发射台状态由发光(可发射)/暗淡(发射后)区分，不再绘制文字提示
+}
+
+function drawAlien(cx,cy,r){
+  const rx=r*1.15, ry=r*0.95;
+  // 触角（纯 lineTo，无 ellipse 依赖）
+  ctx.strokeStyle="#3b6d11"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(cx-rx*0.4,cy-ry*0.85); ctx.lineTo(cx-rx*0.55,cy-ry*1.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+rx*0.4,cy-ry*0.85); ctx.lineTo(cx+rx*0.55,cy-ry*1.5); ctx.stroke();
+  ctx.fillStyle="#3b6d11";
+  ctx.beginPath(); ctx.arc(cx-rx*0.55,cy-ry*1.5,r*0.16,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+rx*0.55,cy-ry*1.5,r*0.16,0,7); ctx.fill();
+  // 头（椭圆：用 arc + scale 替代 ellipse，最大兼容性）
+  ctx.save();
+  ctx.translate(cx,cy); ctx.scale(rx/r, ry/r);
+  ctx.beginPath(); ctx.arc(0,0,r,0,7);
+  ctx.fillStyle="#8bc34a"; ctx.fill();
+  ctx.lineWidth=1.5*r/rx; ctx.strokeStyle="#3b6d11"; ctx.stroke();
+  ctx.restore();
+  // 眼睛（椭圆：arc + scale + rotate）
+  ctx.fillStyle="#1c1c1c";
+  ctx.save(); ctx.translate(cx-rx*0.42,cy-r*0.05); ctx.rotate(0.3); ctx.scale(1,1.7);
+  ctx.beginPath(); ctx.arc(0,0,rx*0.2,0,7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(cx+rx*0.42,cy-r*0.05); ctx.rotate(-0.3); ctx.scale(1,1.7);
+  ctx.beginPath(); ctx.arc(0,0,rx*0.2,0,7); ctx.fill(); ctx.restore();
+  // 嘴
+  ctx.strokeStyle="#3b6d11"; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(cx,cy+ry*0.5,rx*0.3,0.15*Math.PI,0.85*Math.PI); ctx.stroke();
+}
+
+function drawAimLine(){
+  if(!aim) return;
+  const L=level.launch;
+  const len = 30 + aim.power/V0_MAX*70;
+  const ex = L.x + aim.dirx*len, ey = L.y + aim.diry*len;
+  ctx.beginPath(); ctx.moveTo(L.x,L.y); ctx.lineTo(ex,ey);
+  ctx.strokeStyle="#0f6e56"; ctx.lineWidth=3; ctx.stroke();
+  const ang=Math.atan2(aim.diry,aim.dirx);
+  ctx.beginPath();
+  ctx.moveTo(ex,ey); ctx.lineTo(ex-Math.cos(ang-0.4)*11, ey-Math.sin(ang-0.4)*11);
+  ctx.moveTo(ex,ey); ctx.lineTo(ex-Math.cos(ang+0.4)*11, ey-Math.sin(ang+0.4)*11);
+  ctx.stroke();
+}
+
+function drawPolyline(pts, color, width, dash){
+  if(!pts || pts.length<2) return;
+  ctx.beginPath();
+  let pending=false;
+  for(const p of pts){
+    if(p.jump){ pending=true; continue; }      // 虫洞断裂：下个点重新 moveTo
+    if(pending){ ctx.moveTo(p.x,p.y); pending=false; }
+    else ctx.lineTo(p.x,p.y);
+  }
+  ctx.strokeStyle=color; ctx.lineWidth=width;
+  if(dash) ctx.setLineDash(dash); else ctx.setLineDash([]);
+  ctx.stroke(); ctx.setLineDash([]);
+}
+
+function drawGhost(){
+  if(!ghostTrail || phase==="won") return;
+  drawPolyline(ghostTrail, "rgba(120,120,120,.45)", 2, [2,5]);
+}
+
+function drawRocket(){
+  if(!rocket) return;
+  drawPolyline(rocket.trail, "rgba(24,95,165,.55)", 3, null);
+  const ang = Math.atan2(rocket.vy, rocket.vx);
+  ctx.save(); ctx.translate(rocket.x, rocket.y); ctx.rotate(ang);
+  ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(-8,6); ctx.lineTo(-8,-6); ctx.closePath();
+  ctx.fillStyle="#2c2c2a"; ctx.fill();
+  ctx.restore();
+}
+
+function render(){
+  drawScene();
+  drawGhost();
+  if(phase==="aim" && aim) drawAimLine();
+  if(phase==="flying" || phase==="won") drawRocket();
+  if(phase==="won" && winRingT>0){
+    const k=1-winRingT/0.45;
+    ctx.beginPath(); ctx.arc(level.target.x,level.target.y, 10+k*46,0,7);
+    ctx.strokeStyle="rgba(59,109,17,"+(winRingT/0.45)+")"; ctx.lineWidth=3; ctx.stroke();
+  }
+}
+
+// ===== 自适应：把逻辑坐标 960x540 映射到实际像素（含 DPR），保证铺满且清晰 =====
+function fitCanvas(){
+  const rect = cv.getBoundingClientRect();
+  if(rect.width < 1 || rect.height < 1) return;     // 布局未就绪时跳过，避免 0 尺寸
+  const dpr = window.devicePixelRatio || 1;
+  cv.width  = Math.max(1, Math.round(rect.width  * dpr));
+  cv.height = Math.max(1, Math.round(rect.height * dpr));
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);   // 逻辑→物理 等比映射
+}
+
+// ===== 主循环 =====
+let last = performance.now();
+function loop(now){
+  const frameDt = Math.min((now-last)/1000, 0.05); last = now;
+  if(winRingT>0) winRingT = Math.max(0, winRingT-frameDt);
+  if(phase==="flying" && rocket){
+    acc += frameDt;
+    while(acc >= DT){
+      worldT += DT;                       // 确定性推进（含卫星公转）
+      const ev = step(rocket);
+      simT += DT; acc -= DT;
+      rocket.trail.push({x:rocket.x, y:rocket.y});
+      if(ev){ endGame(ev); break; }
+      if(simT > T_MAX){ endGame("timeout"); break; }
+    }
+  } else {
+    worldT += frameDt;                    // 瞄准/胜利时卫星仍在公转
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ===== 结束 / 关卡 / 徽章 =====
+function endGame(ev){
+  if(ev==="win"){
+    phase="won"; winRingT=0.45;
+    beep(660,0.22,"square"); setTimeout(()=>beep(90,0.3,"sine"),120);
+    passedSet.add(levelIdx);
+    localStorage.setItem("gg_passed", JSON.stringify([...passedSet]));
+    // 徽章评级（按尝试数 + 燃料，取历史最佳）
+    const tier = computeTier(levelAttempts, lastWinFuelFrac);
+    const prev = badgeTiers[levelIdx] || 0;
+    if(tier > prev){ badgeTiers[levelIdx] = tier; localStorage.setItem("gg_badges", JSON.stringify(badgeTiers)); newTier = tier; }
+    else newTier = 0;
+    renderBadgeTray(); renderLevels();
+    showWinPill();
+  } else {
+    phase="aim";
+    ghostTrail = rocket ? rocket.trail : ghostTrail;
+    rocket=null;
+    beep(120,0.18,"square");
+  }
+}
+
+function showWinPill(){
+  const pill=document.getElementById("winpill");
+  const next=document.getElementById("nextBtn");
+  const badge=document.getElementById("winBadge");
+  if(newTier>0){ const t=TIER[newTier]; badge.textContent = t.ic+" 获得"+t.n+"徽章！"; }
+  else { const t=TIER[badgeTiers[levelIdx]]; badge.textContent = t? (t.ic+" "+t.n+"徽章"):""; }
+  if(levelIdx+1 < LEVELS.length){ next.style.display=""; next.textContent="下一关"; }
+  else { next.style.display="none"; }
+  pill.style.display="flex";
+}
+function hideWinPill(){ document.getElementById("winpill").style.display="none"; }
+function retry(){ rocket=null; phase="aim"; }
+function loadLevel(i){
+  levelIdx=i; level=LEVELS[i]; rocket=null; aim=null; phase="aim"; ghostTrail=null;
+  levelAttempts=0; worldT=0; acc=0; simT=0;
+  assignPairStyles();   // 为每对黑洞分配颜色+形状
+  document.getElementById("levelName").textContent=level.name;
+  document.getElementById("angle").textContent="–";
+  document.getElementById("power").textContent="–";
+  document.getElementById("attempts").textContent="0";
+  hideWinPill();
+  renderBadgeTray(); renderLevels();
+}
+
+// 左上角：依次列出每关徽章等级
+function renderBadgeTray(){
+  const box=document.getElementById("badgeTray"); box.innerHTML="";
+  LEVELS.forEach((L,i)=>{
+    const tier=badgeTiers[i]||0;
+    const d=document.createElement("div"); d.className="bi"+((tier&&TIER[tier])?" t"+tier:"");
+    const ic = TIER[tier] ? TIER[tier].ic : "—";
+    d.innerHTML='<b>'+(i+1)+'</b>'+ic;
+    box.appendChild(d);
+  });
+}
+function renderLevels(){
+  const box=document.getElementById("levels"); box.innerHTML="";
+  LEVELS.forEach((L,i)=>{
+    const passed = passedSet.has(i);
+    const b=document.createElement("button");
+    b.className="lvl"+(passed?" on":" lock");
+    b.textContent=(i+1);
+    if(passed) b.onclick=()=>{ hideWinPill(); loadLevel(i); };
+    box.appendChild(b);
+  });
+  // 章节分隔（每 3 关一章：L3 / L6 / L9 / L12 后插分隔 → 5 章）
+  let off=0;
+  for(const p of [3,6,9,12]){
+    if(p+off < box.children.length){
+      const sep=document.createElement("div"); sep.className="sep";
+      box.insertBefore(sep, box.children[p+off]); off++;
+    }
+  }
+}
+
+// ===== 音效 =====
+let actx=null;
+function ensureAudio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } }
+function beep(freq,dur,type){
+  if(!actx) return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type=type||"sine"; o.frequency.value=freq; o.connect(g); g.connect(actx.destination);
+  g.gain.setValueAtTime(0.18,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+dur);
+  o.start(); o.stop(actx.currentTime+dur);
+}
+
+document.getElementById("nextBtn").onclick = ()=>{ hideWinPill(); if(levelIdx+1<LEVELS.length) loadLevel(levelIdx+1); };
+document.getElementById("replayBtn").onclick = ()=>{ hideWinPill(); loadLevel(levelIdx); };
+loadLevel(0);
+fitCanvas();
+window.addEventListener("resize", fitCanvas);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

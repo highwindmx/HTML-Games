@@ -1,0 +1,47 @@
+# ============================================================
+# .gitattributes — WSADgame (Godot 4.7)
+# 作用：统一换行符、声明二进制，消除 "LF will be replaced by CRLF" 警告
+#       并防止 .wasm/.pck/.png 等二进制被 Git 当成文本误转导致损坏
+# 约定：纯 Windows 工作流 —— 仓库存 LF、工作区检出 CRLF
+# ============================================================
+
+# --- 文本文件：自动识别 + 工作区统一 CRLF ---
+*                       text=auto eol=crlf
+
+# Godot 源码/资源（强制按文本处理，确保能 diff/合并）
+*.gd                    text
+*.cs                    text
+*.tres                  text
+*.tscn                  text
+*.import                text
+*.cfg                   text
+*.csv                   text
+*.md                    text
+*.txt                   text
+*.html                  text
+*.js                    text
+*.json                  text
+*.webmanifest           text
+
+# --- 二进制文件：禁止换行转换（避免损坏） ---
+*.wasm                  binary
+*.pck                   binary
+*.dll                   binary
+*.exe                   binary
+*.so                    binary
+*.dylib                 binary
+*.ttf                   binary
+*.otf                   binary
+*.png                   binary
+*.jpg                   binary
+*.jpeg                  binary
+*.webp                  binary
+*.bmp                   binary
+*.gif                   binary
+*.ico                   binary
+*.ogg                   binary
+*.mp3                   binary
+*.wav                   binary
+*.ogv                   binary
+*.webm                  binary
+*.zip                   binary

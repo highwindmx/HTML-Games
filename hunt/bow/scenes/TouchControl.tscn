@@ -1,0 +1,43 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/TouchControl.gd" id="1_touch"]
+
+[node name="TouchControl" type="CanvasLayer"]
+layer = 8
+visible = false
+
+[node name="TouchUI" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_touch")
+
+[node name="BombBtn" type="Button" parent="TouchUI"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -180.0
+offset_top = -120.0
+offset_right = -40.0
+offset_bottom = -40.0
+text = "炸弹"
+mouse_filter = 2
+
+[node name="PauseBtn" type="Button" parent="TouchUI"]
+layout_mode = 1
+anchors_preset = 2
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -120.0
+offset_top = 20.0
+offset_right = -30.0
+offset_bottom = 70.0
+text = "暂停"
+mouse_filter = 2

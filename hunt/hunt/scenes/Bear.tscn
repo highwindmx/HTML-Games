@@ -1,0 +1,108 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scripts/Enemy.gd" id="1_enemy"]
+
+[sub_resource type="CapsuleShape3D" id="CapShape_bear"]
+radius = 0.7
+height = 2.6
+
+[sub_resource type="CapsuleMesh" id="Cap_bear"]
+radius = 0.55
+height = 1.7
+
+[sub_resource type="CylinderMesh" id="Cyl_leg"]
+top_radius = 0.12
+bottom_radius = 0.16
+height = 1.0
+
+[sub_resource type="SphereMesh" id="Sphere_head"]
+radius = 0.4
+height = 0.8
+
+[sub_resource type="SphereMesh" id="Sphere_snout"]
+radius = 0.2
+height = 0.4
+
+[sub_resource type="SphereMesh" id="Sphere_ear"]
+radius = 0.14
+height = 0.28
+
+[sub_resource type="SphereMesh" id="Sphere_tail"]
+radius = 0.12
+height = 0.24
+
+[sub_resource type="StandardMaterial3D" id="BearMat"]
+albedo_color = Color(0.32, 0.2, 0.11, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="BearLightMat"]
+albedo_color = Color(0.55, 0.4, 0.25, 1)
+roughness = 0.9
+
+[sub_resource type="SphereShape3D" id="SphereShape_head"]
+radius = 0.45
+
+[node name="Enemy" type="CharacterBody3D"]
+script = ExtResource("1_enemy")
+enemy_type = "bear"
+collision_mask = 3
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.05, 0.1)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("Cap_bear")
+material_override = SubResource("BearMat")
+
+[node name="LegFL" type="MeshInstance3D" parent="."]
+position = Vector3(-0.38, -0.75, -0.55)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("BearMat")
+
+[node name="LegFR" type="MeshInstance3D" parent="."]
+position = Vector3(0.38, -0.75, -0.55)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("BearMat")
+
+[node name="LegBL" type="MeshInstance3D" parent="."]
+position = Vector3(-0.38, -0.75, 0.65)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("BearMat")
+
+[node name="LegBR" type="MeshInstance3D" parent="."]
+position = Vector3(0.38, -0.75, 0.65)
+mesh = SubResource("Cyl_leg")
+material_override = SubResource("BearMat")
+
+[node name="Tail" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.2, 1.0)
+mesh = SubResource("Sphere_tail")
+material_override = SubResource("BearLightMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("CapShape_bear")
+
+[node name="Head" type="Area3D" parent="."]
+groups = ["enemy_head"]
+position = Vector3(0, 0.5, -0.85)
+
+[node name="Mesh" type="MeshInstance3D" parent="Head"]
+mesh = SubResource("Sphere_head")
+material_override = SubResource("BearMat")
+
+[node name="Snout" type="MeshInstance3D" parent="Head"]
+position = Vector3(0, -0.1, -0.32)
+mesh = SubResource("Sphere_snout")
+material_override = SubResource("BearLightMat")
+
+[node name="EarL" type="MeshInstance3D" parent="Head"]
+position = Vector3(-0.26, 0.34, 0.1)
+mesh = SubResource("Sphere_ear")
+material_override = SubResource("BearMat")
+
+[node name="EarR" type="MeshInstance3D" parent="Head"]
+position = Vector3(0.26, 0.34, 0.1)
+mesh = SubResource("Sphere_ear")
+material_override = SubResource("BearMat")
+
+[node name="Collision" type="CollisionShape3D" parent="Head"]
+shape = SubResource("SphereShape_head")

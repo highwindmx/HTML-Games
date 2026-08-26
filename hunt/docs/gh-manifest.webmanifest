@@ -1,0 +1,23 @@
+{
+  "name": "弓猎",
+  "short_name": "弓猎",
+  "description": "球面星球弓箭狩猎",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1B5E20",
+  "theme_color": "#228B22",
+  "icons": [
+    {
+      "src": "index.icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "index.apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

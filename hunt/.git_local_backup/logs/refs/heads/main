@@ -1,0 +1,15 @@
+0000000000000000000000000000000000000000 79c109da45e4331f1614d73cf3cf188fd878550b highwindmx <highwindmx@126.com> 1786950350 +0800	commit (initial): Initial commit: Godot 4.7 mini-games (bow/bullet/hunt) with README & MIT license
+79c109da45e4331f1614d73cf3cf188fd878550b 8ce17245070d57f13b08485789a217a5a5455912 highwindmx <highwindmx@126.com> 1786950575 +0800	commit: Add .gitattributes: normalize line endings (CRLF worktree) and mark binaries
+8ce17245070d57f13b08485789a217a5a5455912 a5b61957372bc4ce09939fdbd4204c9570bb14cf highwindmx <highwindmx@126.com> 1786950739 +0800	commit: for github page
+a5b61957372bc4ce09939fdbd4204c9570bb14cf 722870c71b80fa514c2da01cdc170d7464b18a33 highwindmx <highwindmx@126.com> 1786951265 +0800	commit: for github page doc
+722870c71b80fa514c2da01cdc170d7464b18a33 dbaef1296582bf0864d29e027c1e6c3b8e43c7d0 highwindmx <highwindmx@126.com> 1786953553 +0800	commit: Track docs/ export binaries (index.pck, index.wasm) for GitHub Pages
+dbaef1296582bf0864d29e027c1e6c3b8e43c7d0 7419219be59e98e1a4bedf11719de5f5915b6ed1 highwindmx <highwindmx@126.com> 1786954080 +0800	commit: Add forest green bow icon; update project icon and PWA manifest
+7419219be59e98e1a4bedf11719de5f5915b6ed1 c58b2201b89460c22558bf61fdf47d1a6bf5ae9b highwindmx <highwindmx@126.com> 1786955894 +0800	commit: Fix CJK tofu on web: subset SimHei as default font; add landscape rotate hint; mobile-aware control hints
+c58b2201b89460c22558bf61fdf47d1a6bf5ae9b 67cb215d0c32edc18f352f046643e4815dfe4626 highwindmx <highwindmx@126.com> 1786956284 +0800	commit: Re-subset CJK font from full current char set (incl. mobile hint); add CJK font fallback to rotate hint
+67cb215d0c32edc18f352f046643e4815dfe4626 08408e780e67611110d88a2a23489b3426de3401 highwindmx <highwindmx@126.com> 1786956817 +0800	commit: Refine start-menu control hints: unify 炸蛋 naming, clarify hold-to-charge release-to-fire
+08408e780e67611110d88a2a23489b3426de3401 4321cb3314fbb5e00d9aa2ec74c8aabf8961520e highwindmx <highwindmx@126.com> 1786958739 +0800	commit: Fix stale PWA cache: network-first for pck/wasm so re-exports apply; bump cache to v2
+4321cb3314fbb5e00d9aa2ec74c8aabf8961520e 24828e2aa32cb8c3934882364a60cb2fe8dd19fb highwindmx <highwindmx@126.com> 1786958857 +0800	commit: Deploy re-export with CJK font baked into pck; export_path=docs; SW network-first fix
+24828e2aa32cb8c3934882364a60cb2fe8dd19fb 242771c75e82031be77e75d803e5347e0b24d980 highwindmx <highwindmx@126.com> 1786959201 +0800	commit: Override window title to 弓猎 at startup to strip auto-appended [Debug] suffix (web tab)
+242771c75e82031be77e75d803e5347e0b24d980 0787ae0dfdeb80ba5393e8b241d157597bdac275 highwindmx <highwindmx@126.com> 1787020670 +0800	commit: 修复文字方块
+0787ae0dfdeb80ba5393e8b241d157597bdac275 fdd0352024c4f98933758f741fef9ec2826a70d5 highwindmx <highwindmx@126.com> 1787022906 +0800	commit: feat: 纯 HTML5(Three.js) 复刻《弓猎》于 web/ (球面狩猎/蓄力弓射/敌人流式/触屏+PWA)
+fdd0352024c4f98933758f741fef9ec2826a70d5 bc5d444d67f81eea0d152c921b9a24387472d269 highwindmx <highwindmx@126.com> 1787028427 +0800	commit: fix(web): 放大行星/降低相机/修复旋转抖动 + 重做敌人AI(猎物逃离·猛兽追击) + 强化难度徽章HUD + 程序化音效

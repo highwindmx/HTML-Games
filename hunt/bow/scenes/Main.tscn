@@ -1,0 +1,127 @@
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="Script" path="res://scripts/Player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/Main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/HUD.tscn" id="1_hud"]
+[ext_resource type="PackedScene" path="res://scenes/StartMenu.tscn" id="1_startmenu"]
+[ext_resource type="PackedScene" path="res://scenes/PauseMenu.tscn" id="1_pausemenu"]
+[ext_resource type="PackedScene" path="res://scenes/TouchControl.tscn" id="1_touch"]
+
+[sub_resource type="Environment" id="Env1"]
+background_mode = 2
+background_color = Color(0.12, 0.16, 0.24, 1)
+ambient_light_energy = 0.5
+ambient_light_color = Color(0.7, 0.7, 0.8, 1)
+
+[sub_resource type="SphereShape3D" id="Sphere_planet"]
+radius = 200.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_earth"]
+radius = 200.0
+height = 400.0
+
+[sub_resource type="StandardMaterial3D" id="EarthMat"]
+albedo_color = Color(0.12, 0.28, 0.2, 1)
+roughness = 0.9
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
+radius = 0.5
+height = 2.0
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_player"]
+radius = 0.5
+height = 2.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_head"]
+radius = 0.35
+height = 0.7
+
+[sub_resource type="BoxMesh" id="BoxMesh_gun"]
+size = Vector3(0.3, 0.3, 0.6)
+
+[sub_resource type="StandardMaterial3D" id="PlayerMat"]
+albedo_color = Color(0.2, 0.7, 0.5, 1)
+
+[sub_resource type="StandardMaterial3D" id="HeadMat"]
+albedo_color = Color(0.95, 0.8, 0.6, 1)
+
+[sub_resource type="StandardMaterial3D" id="GunMat"]
+albedo_color = Color(0.2, 0.5, 0.9, 1)
+
+[sub_resource type="StandardMaterial3D" id="ReticleMat"]
+albedo_color = Color(0.25, 0.9, 1.0, 1)
+emission_enabled = true
+emission = Color(0.1, 0.7, 1.0, 1)
+emission_energy_multiplier = 1.6
+params_cull_mode = 0
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env1")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+position = Vector3(0, 16, 6)
+rotation = Vector3(-0.9, 3.1416, 0)
+light_energy = 1.5
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+current = true
+position = Vector3(-20, 30, -20)
+rotation = Vector3(-0.74, 3.927, 0)
+fov = 60
+near = 0.1
+far = 1000
+
+[node name="Ground" type="StaticBody3D" parent="."]
+[node name="GroundCollision" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("Sphere_planet")
+position = Vector3(0, 0, 0)
+
+[node name="Earth" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_earth")
+material_override = SubResource("EarthMat")
+position = Vector3(0, 0, 0)
+
+[node name="Reticle" type="MeshInstance3D" parent="."]
+material_override = SubResource("ReticleMat")
+visible = false
+
+[node name="Player" type="CharacterBody3D" parent="."]
+position = Vector3(0, 201, 0)
+script = ExtResource("1_player")
+[node name="PlayerMesh" type="MeshInstance3D" parent="Player"]
+mesh = SubResource("CapsuleMesh_player")
+material_override = SubResource("PlayerMat")
+[node name="Head" type="MeshInstance3D" parent="Player"]
+mesh = SubResource("SphereMesh_head")
+material_override = SubResource("HeadMat")
+position = Vector3(0, 1.25, 0)
+[node name="Gun" type="MeshInstance3D" parent="Player"]
+mesh = SubResource("BoxMesh_gun")
+material_override = SubResource("GunMat")
+position = Vector3(0, 0.3, -0.7)
+[node name="MuzzleFlash" type="OmniLight3D" parent="Player"]
+position = Vector3(0, 0.4, -0.9)
+light_color = Color(1, 0.9, 0.6, 1)
+light_energy = 0.0
+distance = 8.0
+shadow_enabled = false
+[node name="SpawnTimer" type="Timer" parent="."]
+wait_time = 3.0
+one_shot = false
+autostart = false
+
+[node name="SFX" type="AudioStreamPlayer" parent="."]
+
+[node name="GunSFX" type="AudioStreamPlayer" parent="."]
+
+[node name="StartMenu" parent="." instance=ExtResource("1_startmenu")]
+
+[node name="PauseMenu" parent="." instance=ExtResource("1_pausemenu")]
+
+[node name="HUD" parent="." instance=ExtResource("1_hud")]
+
+[node name="TouchControl" parent="." instance=ExtResource("1_touch")]

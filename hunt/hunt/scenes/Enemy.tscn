@@ -1,0 +1,50 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/Enemy.gd" id="1_enemy"]
+
+[sub_resource type="CapsuleMesh" id="Cap_enemy"]
+radius = 0.5
+height = 2.0
+
+[sub_resource type="CapsuleShape3D" id="CapShape_enemy"]
+radius = 0.5
+height = 2.0
+
+[sub_resource type="BoxMesh" id="Box_face"]
+size = Vector3(0.6, 0.3, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="EnemyMat"]
+albedo_color = Color(0.9, 0.45, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="Sphere_head"]
+radius = 0.4
+height = 0.8
+
+[sub_resource type="SphereShape3D" id="SphereShape_head"]
+radius = 0.42
+
+[node name="Enemy" type="CharacterBody3D"]
+script = ExtResource("1_enemy")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Cap_enemy")
+material_override = SubResource("EnemyMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("CapShape_enemy")
+
+[node name="Face" type="MeshInstance3D" parent="."]
+mesh = SubResource("Box_face")
+material_override = SubResource("EnemyMat")
+position = Vector3(0, 0.3, -0.5)
+
+[node name="Head" type="Area3D" parent="."]
+groups = ["enemy_head"]
+position = Vector3(0, 1.55, -0.1)
+
+[node name="Mesh" type="MeshInstance3D" parent="Head"]
+mesh = SubResource("Sphere_head")
+material_override = SubResource("EnemyMat")
+
+[node name="Collision" type="CollisionShape3D" parent="Head"]
+shape = SubResource("SphereShape_head")

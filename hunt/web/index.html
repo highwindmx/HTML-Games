@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1B5E20" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="弓猎" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="./icon.png" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>弓猎</title>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-row">
+      <span id="hud-arrows" class="hud-pill">箭 20/20</span>
+      <span id="hud-score" class="hud-pill">积分 0</span>
+      <span id="hud-eff" class="hud-pill">效率 0.0</span>
+    </div>
+    <div class="hud-row">
+      <span id="hud-bomb" class="hud-pill bomb">炸蛋 3</span>
+      <span id="hud-time" class="hud-pill">时间 0s</span>
+    </div>
+    <div class="hud-row">
+      <span id="hud-badges" class="hud-pill badges-pill">徽章：—</span>
+    </div>
+    <div id="hud-hp-wrap"><div id="hud-hp"></div></div>
+  </div>
+
+  <!-- 开始菜单 -->
+  <div id="start-menu" class="overlay">
+    <div class="panel">
+      <h1 class="title">弓猎</h1>
+      <p class="subtitle">球面狩猎 · 蓄力弓射</p>
+      <p class="rules">狩猎徽章（可多选，叠加玩法与难度）：</p>
+      <div id="badges" class="badges"></div>
+      <button id="start-btn" class="big-btn">开始游戏</button>
+      <p id="hint" class="hint">WASD 移动 · 鼠标瞄准 · 按住左键蓄力松开射箭 · 按住右键投炸蛋 · ESC 暂停</p>
+    </div>
+  </div>
+
+  <!-- 暂停菜单 -->
+  <div id="pause-menu" class="overlay">
+    <div class="panel">
+      <h2 class="title">已暂停</h2>
+      <button id="pause-resume" class="big-btn">继续</button>
+      <button id="pause-restart" class="big-btn ghost">重新开始</button>
+    </div>
+  </div>
+
+  <!-- 结束菜单 -->
+  <div id="over-menu" class="overlay">
+    <div class="panel">
+      <h2 class="title">狩猎结束</h2>
+      <p id="over-score" class="subtitle">积分 0 · 存活 0s</p>
+      <button id="over-restart" class="big-btn">再来一局</button>
+    </div>
+  </div>
+
+  <!-- 触屏层 -->
+  <div id="touch-layer"></div>
+
+  <!-- toast -->
+  <div id="toast"></div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

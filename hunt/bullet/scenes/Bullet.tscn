@@ -1,0 +1,23 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/Bullet.gd" id="1_bullet"]
+
+[sub_resource type="SphereMesh" id="Sphere_bullet"]
+radius = 0.2
+height = 0.4
+
+[sub_resource type="SphereShape3D" id="SphereShape_bullet"]
+radius = 0.2
+
+[sub_resource type="StandardMaterial3D" id="BulletMat"]
+albedo_color = Color(1, 0.85, 0.2, 1)
+
+[node name="Bullet" type="Area3D"]
+script = ExtResource("1_bullet")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Sphere_bullet")
+material_override = SubResource("BulletMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape_bullet")

@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/Bomb.gd" id="1_bomb"]
+
+[sub_resource type="SphereMesh" id="BombMesh"]
+radius = 0.3
+height = 0.6
+
+[sub_resource type="StandardMaterial3D" id="BombMat"]
+albedo_color = Color(0.9, 0.3, 0.1, 1)
+emission_enabled = true
+emission = Color(0.6, 0.2, 0.05, 1)
+emission_energy_multiplier = 0.8
+
+[sub_resource type="SphereShape3D" id="BombShape"]
+radius = 0.3
+
+[node name="Bomb" type="Area3D"]
+script = ExtResource("1_bomb")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("BombMesh")
+material_override = SubResource("BombMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("BombShape")

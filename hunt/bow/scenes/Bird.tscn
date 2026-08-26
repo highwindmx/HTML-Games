@@ -1,0 +1,81 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scripts/Enemy.gd" id="1_enemy"]
+
+[sub_resource type="StandardMaterial3D" id="BirdBodyMat"]
+albedo_color = Color(0.22, 0.55, 0.78, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="BirdWingMat"]
+albedo_color = Color(0.13, 0.4, 0.62, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="BirdBeakMat"]
+albedo_color = Color(0.95, 0.6, 0.1, 1)
+emission_enabled = true
+emission = Color(0.5, 0.3, 0.0, 1)
+emission_energy_multiplier = 0.4
+
+[sub_resource type="SphereMesh" id="Sphere_body"]
+radius = 0.4
+height = 0.8
+
+[sub_resource type="BoxMesh" id="Box_wing"]
+size = Vector3(1.5, 0.08, 0.55)
+
+[sub_resource type="CylinderMesh" id="Cone_beak"]
+top_radius = 0.0
+bottom_radius = 0.16
+height = 0.4
+
+[sub_resource type="SphereMesh" id="Sphere_head"]
+radius = 0.34
+height = 0.68
+
+[sub_resource type="SphereShape3D" id="SphereShape_head"]
+radius = 0.36
+
+[sub_resource type="CapsuleShape3D" id="CapShape_body"]
+radius = 0.45
+height = 1.1
+
+[node name="Enemy" type="CharacterBody3D"]
+script = ExtResource("1_enemy")
+is_bird = true
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Sphere_body")
+material_override = SubResource("BirdBodyMat")
+scale = Vector3(1, 1, 1.6)
+
+[node name="WingL" type="MeshInstance3D" parent="."]
+mesh = SubResource("Box_wing")
+material_override = SubResource("BirdWingMat")
+position = Vector3(-0.75, 0.18, 0)
+rotation = Vector3(0, 0, 0.3)
+
+[node name="WingR" type="MeshInstance3D" parent="."]
+mesh = SubResource("Box_wing")
+material_override = SubResource("BirdWingMat")
+position = Vector3(0.75, 0.18, 0)
+rotation = Vector3(0, 0, -0.3)
+
+[node name="Head" type="Area3D" parent="."]
+groups = ["enemy_head"]
+position = Vector3(0, 0.12, -0.62)
+
+[node name="Mesh" type="MeshInstance3D" parent="Head"]
+mesh = SubResource("Sphere_head")
+material_override = SubResource("BirdBodyMat")
+
+[node name="Beak" type="MeshInstance3D" parent="Head"]
+mesh = SubResource("Cone_beak")
+material_override = SubResource("BirdBeakMat")
+position = Vector3(0, 0, -0.42)
+rotation = Vector3(-1.5708, 0, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Head"]
+shape = SubResource("SphereShape_head")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("CapShape_body")

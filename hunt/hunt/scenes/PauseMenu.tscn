@@ -1,0 +1,78 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/PauseMenu.gd" id="1_pause"]
+[ext_resource type="Script" path="res://scripts/ImageText.gd" id="1_img"]
+
+[node name="PauseMenu" type="CanvasLayer"]
+layer = 10
+process_mode = 1
+script = ExtResource("1_pause")
+
+[node name="Panel" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+color = Color(0.05, 0.07, 0.12, 0.8)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="VBox" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(420, 280)
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="Title" type="Control" parent="Center/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "已暂停"
+script = ExtResource("1_img")
+font_size = 56
+color = Color(0.95, 0.85, 0.4, 1)
+align = 1
+
+[node name="ResumeButton" type="Button" parent="Center/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+custom_minimum_size = Vector2(0, 60)
+
+[node name="ResumeLabel" type="Control" parent="Center/VBox/ResumeButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_img")
+text = "继续"
+font_size = 30
+color = Color(1, 1, 1, 1)
+align = 1
+valign = 1
+
+[node name="RestartButton" type="Button" parent="Center/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = ""
+custom_minimum_size = Vector2(0, 60)
+
+[node name="RestartLabel" type="Control" parent="Center/VBox/RestartButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_img")
+text = "重新开始"
+font_size = 30
+color = Color(1, 1, 1, 1)
+align = 1
+valign = 1

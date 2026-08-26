@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/Arrow.gd" id="1_arrow"]
+
+[sub_resource type="BoxMesh" id="ArrowMesh"]
+size = Vector3(0.08, 0.08, 1.0)
+
+[sub_resource type="StandardMaterial3D" id="ArrowMat"]
+albedo_color = Color(0.82, 0.62, 0.3, 1)
+
+[sub_resource type="BoxShape3D" id="ArrowShape"]
+size = Vector3(0.08, 0.08, 1.0)
+
+[node name="Arrow" type="Area3D"]
+script = ExtResource("1_arrow")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("ArrowMesh")
+material_override = SubResource("ArrowMat")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("ArrowShape")

@@ -1,0 +1,55 @@
+[gd_scene load_steps=8 format=3]
+
+[sub_resource type="CylinderMesh" id="Cyl_trunk"]
+top_radius = 0.22
+bottom_radius = 0.34
+height = 3.0
+
+[sub_resource type="CylinderMesh" id="Cone_leaf1"]
+top_radius = 0.0
+bottom_radius = 1.7
+height = 2.9
+
+[sub_resource type="CylinderMesh" id="Cone_leaf2"]
+top_radius = 0.0
+bottom_radius = 1.15
+height = 2.3
+
+[sub_resource type="CylinderShape3D" id="CylinderShape_trunk"]
+radius = 0.45
+height = 3.0
+
+[sub_resource type="StandardMaterial3D" id="TrunkMat"]
+albedo_color = Color(0.42, 0.28, 0.16, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="LeafMat1"]
+albedo_color = Color(0.13, 0.45, 0.18, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="LeafMat2"]
+albedo_color = Color(0.16, 0.52, 0.22, 1)
+roughness = 0.9
+
+[node name="Obstacle" type="StaticBody3D"]
+groups = ["obstacle"]
+collision_layer = 2
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.5, 0)
+mesh = SubResource("Cyl_trunk")
+material_override = SubResource("TrunkMat")
+
+[node name="Leaf1" type="MeshInstance3D" parent="."]
+position = Vector3(0, 4.1, 0)
+mesh = SubResource("Cone_leaf1")
+material_override = SubResource("LeafMat1")
+
+[node name="Leaf2" type="MeshInstance3D" parent="."]
+position = Vector3(0, 5.7, 0)
+mesh = SubResource("Cone_leaf2")
+material_override = SubResource("LeafMat2")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.5, 0)
+shape = SubResource("CylinderShape_trunk")
