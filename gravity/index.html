@@ -72,7 +72,7 @@
       </div>
     </div>
   </div>
-  <div class="hint">在画面任意处<b>按住向后拖拽</b>蓄力（像弹弓），松手发射；燃料越少、尝试越少，徽章越高级。</div>
+  <div class="hint">在画面任意处<b>按住向后拖拽</b>蓄力（像弹弓），松手发射；燃料越少、尝试越少，徽章越高级。<br>每关星球位置随机生成、黑洞出射角度随机，每次进入都不同。</div>
   <div id="levels" class="levels"></div>
 </div>
 
@@ -327,6 +327,32 @@ function assignPairStyles(){
   }
 }
 
+// ===== 每关星球/天体位置相对随机（有界抖动，避开发射点与目标点）=====
+function randomizeBodies(){
+  for(const b of level.bodies){
+    if(b._ox === undefined){ b._ox=b.x; b._oy=b.y; if(b.orbit){ b._ocx=b.orbit.cx; b._ocy=b.orbit.cy; } }
+    // 抖动幅度与画面内边界
+    const AMT = 70, M = 70;
+    if(b.type==="satellite"){
+      for(let t=0;t<8;t++){
+        let cx=b._ocx+(Math.random()*2-1)*AMT, cy=b._ocy+(Math.random()*2-1)*AMT;
+        cx=Math.max(M,Math.min(W-M,cx)); cy=Math.max(M,Math.min(H-M,cy));
+        b.orbit.cx=cx; b.orbit.cy=cy;
+        if(Math.hypot(cx-level.launch.x,cy-level.launch.y)>130 &&
+           Math.hypot(cx-level.target.x,cy-level.target.y)>130) break;
+      }
+    } else {
+      for(let t=0;t<8;t++){
+        let x=b._ox+(Math.random()*2-1)*AMT, y=b._oy+(Math.random()*2-1)*AMT;
+        x=Math.max(M,Math.min(W-M,x)); y=Math.max(M,Math.min(H-M,y));
+        b.x=x; b.y=y;
+        if(Math.hypot(x-level.launch.x,y-level.launch.y)>b.R+70 &&
+           Math.hypot(x-level.target.x,y-level.target.y)>b.R+70) break;
+      }
+    }
+  }
+}
+
 // ===== 物理：加速度（多体叠加）=====
 function accel(x, y){
   let ax=0, ay=0;
@@ -360,9 +386,12 @@ function step(s){
     if(d <= b.R){
       const other = level.bodies.find(o=>o.id===b.pair);
       const op = bodyPos(other);
-      const ux = s.vx/(sp||1), uy = s.vy/(sp||1);
-      s.x = op.x + ux*(other.R+10);
-      s.y = op.y + uy*(other.R+10);
+      // 出射角度随机；力度（速度大小）保持进入时相同（sp 为当前速度大小）
+      const th = Math.random()*Math.PI*2;
+      const ux = Math.cos(th), uy = Math.sin(th);
+      s.x = op.x + ux*(other.R+12);
+      s.y = op.y + uy*(other.R+12);
+      s.vx = ux*sp;  s.vy = uy*sp;
       s.justTeleported = other.id;
       s.trail.push({jump:true});                // 轨迹断裂标记，避免跨屏连线
       return null;
@@ -668,6 +697,7 @@ function retry(){ rocket=null; phase="aim"; }
 function loadLevel(i){
   levelIdx=i; level=LEVELS[i]; rocket=null; aim=null; phase="aim"; ghostTrail=null;
   levelAttempts=0; worldT=0; acc=0; simT=0;
+  randomizeBodies();    // 每关星球/天体位置相对随机
   assignPairStyles();   // 为每对黑洞分配颜色+形状
   document.getElementById("levelName").textContent=level.name;
   document.getElementById("angle").textContent="–";
