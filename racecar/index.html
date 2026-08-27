@@ -508,7 +508,7 @@ const game=new (class Game {
 
   // ---- 渲染 ----
   render(){
-    ctx.setTransform(0,0,1,0,0,1);
+    ctx.setTransform(1,0,0,1,0,0);
     this._hitRects=[];   // 每帧重置点击热区，由各界面按需 push
     // 屏震
     let sx=0,sy=0;
