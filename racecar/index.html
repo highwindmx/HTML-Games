@@ -41,7 +41,7 @@ const T_GRASS = 0, T_ROAD = 1;
 const LAPS = 3;
 const DRIFT_MIN_SPEED = 3.2;         // 低于此速度不判定漂移
 const DRIFT_HANGOVER = 22;           // 松开转向后，漂移态仍保留的帧数（延长滑行）
-const CAM_ZOOM = 1.8;                // 比赛中相机缩放：局部赛道更清晰、车更易操控
+const CAM_ZOOM = 1.35;               // 比赛中相机缩放：视野更宽、前路预判更及时（相对 1.8 收缩约 1/4）
 
 // ---------- 车辆属性（均可调）----------
 // 极速整体下调约 22%，更可控、不易冲出
@@ -67,31 +67,42 @@ const OPPONENTS = [
     turn:0.062, normalLat:0.92, driftLat:0.93, driftTh:2.5, skill:0.86 },
 ];
 
+// 程序化生成闭合中心线控制点：大椭圆骨架 + 低频长S起伏（杜绝 W 型高频反转）
+// 可选 hairpin（高斯内凹）形成偶尔发卡弯；骨架为平滑环、无自交
+function genTrack({Rx,Ry,sAmp=0.16,sFreq=1,sPh=0,hairpin=null,N=14}){
+  const CX=640,CY=360, pts=[];
+  for(let i=0;i<N;i++){
+    const th=i/N*Math.PI*2;
+    const r=1 + sAmp*Math.sin(sFreq*th + sPh);          // 半径调制（长S起伏，低频=长波长）
+    let x=CX+Rx*Math.cos(th)*r, y=CY+Ry*Math.sin(th)*r;
+    if(hairpin){                                         // 局部内凹收紧，形成发卡弯
+      let d=Math.abs(((th-hairpin.ang+Math.PI)%(Math.PI*2))-Math.PI);
+      const w=Math.exp(-(d*d)/(2*hairpin.w*hairpin.w));
+      x=CX+(x-CX)*(1-hairpin.depth*w);
+      y=CY+(y-CY)*(1-hairpin.depth*w);
+    }
+    pts.push([x,y]);
+  }
+  return pts;
+}
 // 三关控制点（顺时针），Catmull-Rom 闭合样条生成中心线
-// 整体放大、加宽、放缓弯角：路宽 112~150，控制点铺满更大范围，弯更圆润
+// 长S型为主、无W型高频反转、偶尔发卡弯；lenScale 统一放大整体长度（再加一倍）
 const TRACK_DEFS = [
-  { name:"极光环道", width:150, color:"#48e0c0", lenScale:2.6, diff:1,
-    par: 19.0,
-    ctrl:[[640,90],[980,140],[1120,360],[980,580],[640,630],[300,580],[160,360],[300,140]] },
-  { name:"涌浪海岸", width:130, color:"#ffb347", lenScale:2.6, diff:2,
-    par: 23.0,
-    ctrl:[[640,90],[900,140],[1080,250],[1120,430],[940,540],[760,450],[640,560],[520,450],[340,540],[160,430],[200,250],[380,140]] },
-  { name:"流光回旋", width:112, color:"#ff5d5d", lenScale:2.6, diff:3,
-    par: 27.0,
-    ctrl:[[640,90],[1000,160],[1130,360],[1000,560],[760,600],[640,470],[520,600],[280,560],[150,360],[280,160],[460,230],[640,230]] },
+  { name:"极光环道", width:150, color:"#48e0c0", lenScale:10.4, diff:1,
+    ctrl: genTrack({Rx:520,Ry:360,sAmp:0.14,sFreq:1,sPh:0}) },
+  { name:"涌浪海岸", width:130, color:"#ffb347", lenScale:10.4, diff:2,
+    ctrl: genTrack({Rx:540,Ry:330,sAmp:0.20,sFreq:1,sPh:0.6}) },
+  { name:"流光回旋", width:112, color:"#ff5d5d", lenScale:10.4, diff:3,
+    ctrl: genTrack({Rx:510,Ry:350,sAmp:0.18,sFreq:1,sPh:0.5,hairpin:{ang:-Math.PI*0.5,w:0.40,depth:0.40}}) },
   // 新增 F1 风格赛道（抽象致敬，非精确复刻）
-  { name:"蒙扎高速", width:170, color:"#7cffb2", lenScale:2.6, diff:2,
-    par: 23.0,
-    ctrl:[[640,70],[1180,150],[1180,360],[1180,570],[640,650],[130,570],[130,360],[130,150]] },
-  { name:"斯帕之刃", width:160, color:"#ff8c42", lenScale:2.6, diff:3,
-    par: 21.0,
-    ctrl:[[640,70],[1080,130],[1230,300],[1080,470],[900,560],[760,400],[640,520],[430,610],[180,500],[120,300],[280,160],[470,120]] },
-  { name:"铃鹿回环", width:150, color:"#c08cff", lenScale:2.6, diff:4,
-    par: 22.0,
-    ctrl:[[640,80],[1000,120],[1180,260],[1060,420],[820,520],[900,660],[640,600],[400,660],[180,520],[300,380],[520,300],[360,160],[540,150]] },
-  { name:"银石流风", width:165, color:"#5db4ff", lenScale:2.6, diff:3,
-    par: 22.0,
-    ctrl:[[640,80],[1120,160],[1180,380],[920,520],[760,380],[640,540],[520,380],[360,540],[140,380],[200,160],[420,120]] },
+  { name:"蒙扎高速", width:170, color:"#7cffb2", lenScale:10.4, diff:2,
+    ctrl: genTrack({Rx:560,Ry:320,sAmp:0.10,sFreq:1}) },
+  { name:"斯帕之刃", width:160, color:"#ff8c42", lenScale:10.4, diff:3,
+    ctrl: genTrack({Rx:540,Ry:370,sAmp:0.16,sFreq:1,sPh:1.0,hairpin:{ang:Math.PI*0.5,w:0.42,depth:0.40}}) },
+  { name:"铃鹿回环", width:150, color:"#c08cff", lenScale:10.4, diff:4,
+    ctrl: genTrack({Rx:530,Ry:350,sAmp:0.15,sFreq:1,sPh:0.3,hairpin:{ang:-Math.PI*0.25,w:0.40,depth:0.42}}) },
+  { name:"银石流风", width:165, color:"#5db4ff", lenScale:10.4, diff:3,
+    ctrl: genTrack({Rx:550,Ry:335,sAmp:0.18,sFreq:1,sPh:0.4,hairpin:{ang:Math.PI*0.75,w:0.44,depth:0.38}}) },
 ];
 
 // ---------- 工具 ----------
@@ -126,11 +137,13 @@ class Track {
     const CX=640, CY=360, LS=def.lenScale||1;          // 长度缩放（围绕画布中心放大）
     this.width=def.width*1.333; this.halfW=this.width/2;   // 路宽 +1/3
     this.center = catmullClosed(def.ctrl.map(p=>[CX+(p[0]-CX)*LS, CY+(p[1]-CY)*LS]), 14);  // 长度约 ×LS
-    this.par = def.par * LS * 1000;                      // 基准时间随长度同比缩放（毫秒）
     this.n=this.center.length;
     // 中心线周长（世界单位），供 AI 估算完赛时间
     let per=0; for(let i=0;i<this.n;i++){ const a=this.center[i], b=this.center[(i+1)%this.n]; per+=Math.hypot(b[0]-a[0],b[1]-a[1]); }
     this.perimeter=per;
+    // 基准目标时间：随赛道周长与圈数同比缩放（毫秒），难度越高阈值略紧
+    const refS=9.0, parK=1+(3-(def.diff||3))*0.05;
+    this.par = (per/(refS*60))*LAPS*1000*parK;
     this.start=this.center[0];
     // 检查点：取中心线上 4 等分点，并记录该处切线方向（用于画发光门）
     this.checkpoints=[]; this.cpAngle=[];
@@ -595,30 +608,37 @@ const game=new (class Game {
   }
   // 对手 AI：朝中心线前瞻点转向，并随横向偏移回正，避免贴边卡死
   aiInput(o){
-    const n=this.track.n, c=this.track.center;
+    const n=this.track.n, c=this.track.center, hw=this.track.halfW;
     const ci=o._ci||0;
     const a=c[ci], b=c[(ci+1)%n];
-    // 切线与法线
+    // 当前点切线与左法线
     const tx=b[0]-a[0], ty=b[1]-a[1]; const tl=Math.hypot(tx,ty)||1;
-    const nx=-ty/tl, ny=tx/tl;                       // 左法向
-    const off=(o.x-a[0])*nx + (o.y-a[1])*ny;         // 车相对中心线的带符号横向偏移
-    // 前瞻点：速度越快看得越远，但限制在合理范围避免切弯扑空
-    const la=Math.max(4, Math.min(14, Math.round(o.speed*0.9)+3));
+    const nx=-ty/tl, ny=tx/tl;
+    const off=(o.x-a[0])*nx + (o.y-a[1])*ny;     // 横向偏移（左为正）
+    const offr=Math.abs(off)/hw;                  // 归一化 0..1+（>1 已冲出）
+    // 用前方两点切线夹角估曲率：弯越急，前瞻越短、越早减速
+    const p1=c[(ci+4)%n], p2=c[(ci+10)%n];
+    const ang1=Math.atan2(p1[1]-a[1], p1[0]-a[0]);
+    const ang2=Math.atan2(p2[1]-p1[1], p2[0]-p1[0]);
+    let dA=ang2-ang1; while(dA>Math.PI) dA-=2*Math.PI; while(dA<-Math.PI) dA+=2*Math.PI;
+    const curve=clamp(Math.abs(dA)/0.7, 0, 1);     // 0 直道 .. 1 急弯
+    // 前瞻距离：短而有效，避免切弯外漂（直道略远、急弯更近，随速度小幅增）
+    const la=clamp(Math.round(5 - curve*2 + o.speed*0.25), 3, 8);
     const tp=c[(ci+la)%n];
-    // 目标点朝中心线回拉：偏移越大回拉越强（即便冲出也强力拉回中线，避免贴边卡死）
-    const offAbs=Math.abs(off);
-    const pull = offAbs>this.track.halfW ? 1.0 : 0.55;
-    const tgx=tp[0]-nx*off*pull, tgy=tp[1]-ny*off*pull;
-    let desired=Math.atan2(tgy-o.y, tgx-o.x);
+    // 目标点 = 中心线前瞻点，并叠「横向回中」偏置：偏离越大越往中线拉，杜绝贴边外滑
+    const aimX=tp[0]-nx*off*0.9, aimY=tp[1]-ny*off*0.9;
+    let desired=Math.atan2(aimY-o.y, aimX-o.x);
     let diff=desired-o.angle;
     while(diff>Math.PI) diff-=2*Math.PI;
     while(diff<-Math.PI) diff+=2*Math.PI;
     const input={up:false,down:false,left:false,right:false,boostActive:false};
-    if(diff>0.05) input.right=true; else if(diff<-0.05) input.left=true;
+    if(diff>0.03) input.right=true; else if(diff<-0.03) input.left=true;
     const align=Math.abs(diff), sk=o.type.skill||1;
-    // 始终保留油门：冲出时草地减速会自然限速，切断油门反而会让车停死在边缘；仅前方弯极急时点刹
-    if(align < 0.4*sk) input.up=true;
-    else if(align > 1.0*sk) input.down=true;
+    // 速度管理：默认全油保速——低速转向无力，必须保速才能循迹回中；
+    // 仅前方急弯且速度偏高 / 已贴边且偏差大 / 车头偏差极大 时收油刹车
+    const edgeDanger = offr>0.5;
+    const brake = (curve>0.55 && o.speed>5.5) || (edgeDanger && align>0.30) || align>1.3*sk;
+    if(brake) input.down=true; else input.up=true;
     return input;
   }
   // 统一推进检查点 / 圈数（玩家记录圈速，对手只记账）
@@ -1012,13 +1032,12 @@ const game=new (class Game {
     for(let i=0;i<list.length;i++){
       const car=list[i], isP=(car===this.car);
       ctx.textAlign="left"; ctx.fillStyle=isP?"#ffffff":car.type.color;
-      const label=(i+1)+". "+(isP?("你 · "+car.type.name):car.type.name)+(car.estimated?" (估)":"");
+      const label=(i+1)+". "+(isP?("你 · "+car.type.name):car.type.name);
       ctx.fillText(label, CW/2-230, 250+i*32);
       ctx.textAlign="right";
       let res;
       if(car===this.car) res=(this.totalMs/1000).toFixed(2)+"s";
-      else if(car.finished) res=(car.finishTime/1000).toFixed(2)+"s";
-      else res="≈"+(car.finishTime/1000).toFixed(2)+"s";
+      else res=(car.finishTime/1000).toFixed(2)+"s";
       ctx.fillStyle=isP?"#ffffff":"#aab6d6";
       ctx.fillText(res, CW/2+230, 250+i*32);
     }
