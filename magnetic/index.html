@@ -55,22 +55,25 @@
 
 <div class="panel">
   <div class="ctrl">
-    <label>磁场强度 <span id="strVal">5.0</span></label>
+    <label>选中磁极强度 <span id="strVal">5.0</span></label>
     <input id="strength" type="range" min="-10" max="10" step="0.5" value="5.0">
   </div>
   <div class="btns">
-    <button id="flip" class="btn ghost">翻转 N/S</button>
+    <button id="addN" class="btn ghost">＋N 极</button>
+    <button id="addS" class="btn ghost">＋S 极</button>
+    <button id="flip" class="btn ghost">翻转选中</button>
     <button id="pause" class="btn">暂停</button>
     <button id="reset" class="btn ghost">重置</button>
   </div>
 </div>
 
-<div id="status" class="status">自动脉冲发射中 · 拖拽磁极或调节强度，让粒子命中右侧靶标</div>
+<div id="status" class="status">自动脉冲发射中 · 拖拽/点击磁极设计磁场，让粒子命中右侧靶标</div>
 
 <div class="legend">
   <b>玩法</b>：你不能直接控制粒子，只能<b>设计磁场</b>。粒子从发射源<b>自动脉冲式</b>喷出；
   灰色虚线是下一发脉冲的预测轨迹（与实飞共用同一套物理，所见即所飞）。
-  <b>磁场流线</b>：蓝=N 极向外、红=S 极向内，虚线流动方向即场方向。
+  <b>磁场流线</b>按真实矢量场积分：蓝=N 极向外、红=S 极向内，多极共存时流线弯曲、形成偶极回线。
+  <b>操作</b>：拖拽磁极移动 · <b>点击</b>选中（滑杆/翻转只作用于选中者，黄圈标记）· <b>右键</b>删除磁极 · 用 ＋N/＋S 增减数量与种类。
   <span class="k" style="background:#4ea1ff"></span>N 极（逆时针偏转）
   <span class="k" style="background:#ff6b6b"></span>S 极（顺时针偏转）
   <span class="k" style="background:#54d6a0"></span>靶标
@@ -103,7 +106,9 @@ let hitCount = 0;         // 累计命中脉冲数
 let targetGlow = 0;       // 命中后靶标高亮衰减量 [0,1]
 let simTime = 0;          // 磁场流线动画时钟
 let dragging = null, dragOffset = { x: 0, y: 0 };
+let selected = poles[0];   // 当前选中的磁极（滑杆/翻转只作用于它）
 let lastT = 0;
+const MAX_POLES = 12;      // 磁极数量上限
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -112,6 +117,8 @@ const strVal = document.getElementById("strVal");
 const pauseBtn = document.getElementById("pause");
 const resetBtn = document.getElementById("reset");
 const flipBtn = document.getElementById("flip");
+const addNBtn = document.getElementById("addN");
+const addSBtn = document.getElementById("addS");
 const statusEl = document.getElementById("status");
 
 // ===== 物理 =====
@@ -176,37 +183,59 @@ function drawField() {
     }
   }
 }
-// 磁场流线（新增视觉）：以磁极为中心的径向流线，虚线流动表方向
-function drawFieldLines() {
+// 磁场矢量场（2D 磁单极子近似）：B ∝ Σ strength·r̂ / d²，多极叠加产生弯曲/偶极回线
+function fieldVec(x, y) {
+  let bx = 0, by = 0;
   for (const p of poles) {
-    const col = p.strength > 0 ? "78,161,255" : "255,107,107";
-    const isN = p.strength >= 0;     // N 极向外、S 极向内
-    const N = 18;
-    const L = Math.hypot(W, H);      // 足够长，超出画布自动裁剪
-    ctx.save();
-    ctx.setLineDash([6, 10]);
-    ctx.lineDashOffset = isN ? -((simTime * 36) % 16) : ((simTime * 36) % 16);
-    ctx.lineWidth = 1.3;
+    let dx = x - p.x, dy = y - p.y;
+    let d = Math.hypot(dx, dy);
+    if (d < MIN_D) d = MIN_D;
+    const f = p.strength / (d * d);
+    bx += f * dx / d;
+    by += f * dy / d;
+  }
+  return { bx, by };
+}
+// 磁场流线（真实积分）：从每个磁极周缘播种，沿矢量场积分出曲线；流光虚线 + 末端箭头 + 距离衰减
+function drawFieldLines() {
+  ctx.save();
+  ctx.setLineDash([5, 9]);
+  ctx.lineDashOffset = -((simTime * 30) % 14);   // 流光流动
+  ctx.lineWidth = 1.2;
+  for (const p of poles) {
+    const isN = p.strength >= 0;
+    const col = isN ? "78,161,255" : "255,107,107";
+    const N = 16, dir = isN ? 1 : -1;            // N 向外、S 向内
     for (let i = 0; i < N; i++) {
-      const ang = (i / N) * Math.PI * 2;
-      const cx = Math.cos(ang), cy = Math.sin(ang);
-      const r0 = POLE_R + 5;
-      const x0 = p.x + cx * r0, y0 = p.y + cy * r0;
-      const x1 = p.x + cx * (r0 + L), y1 = p.y + cy * (r0 + L);
-      ctx.strokeStyle = "rgba(" + col + ",0.16)";
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-      // 方向箭头（N 向外 / S 向内）
-      const ax = p.x + cx * (r0 + 70), ay = p.y + cy * (r0 + 70);
-      const aAng = isN ? ang : ang + Math.PI;
-      ctx.fillStyle = "rgba(" + col + ",0.42)";
+      const ang = (i / N) * Math.PI * 2 + (isN ? 0 : Math.PI / N);
+      let x = p.x + Math.cos(ang) * (POLE_R + 4);
+      let y = p.y + Math.sin(ang) * (POLE_R + 4);
+      ctx.beginPath(); ctx.moveTo(x, y);
+      let lx = x, ly = y, ldx = Math.cos(ang), ldy = Math.sin(ang);
+      for (let s = 0; s < 180; s++) {
+        const fv = fieldVec(x, y);
+        const mag = Math.hypot(fv.bx, fv.by);
+        if (mag < 1e-7) break;
+        const vx = fv.bx / mag * dir, vy = fv.by / mag * dir;
+        x += vx * 6; y += vy * 6;
+        if (x < -30 || x > W + 30 || y < -30 || y > H + 30) { ctx.lineTo(x, y); lx = x; ly = y; ldx = vx; ldy = vy; break; }
+        ctx.lineTo(x, y); lx = x; ly = y; ldx = vx; ldy = vy;
+      }
+      const dist = Math.hypot(lx - p.x, ly - p.y);
+      const a = Math.max(0.06, 0.34 - dist / 1300);   // 距磁极越远越淡
+      ctx.strokeStyle = "rgba(" + col + "," + a.toFixed(3) + ")";
+      ctx.stroke();
+      // 末端方向箭头
+      const aAng = Math.atan2(ldy, ldx);
+      ctx.fillStyle = "rgba(" + col + ",0.5)";
       ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(ax - 6 * Math.cos(aAng - 0.4), ay - 6 * Math.sin(aAng - 0.4));
-      ctx.lineTo(ax - 6 * Math.cos(aAng + 0.4), ay - 6 * Math.sin(aAng + 0.4));
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx - 6 * Math.cos(aAng - 0.4), ly - 6 * Math.sin(aAng - 0.4));
+      ctx.lineTo(lx - 6 * Math.cos(aAng + 0.4), ly - 6 * Math.sin(aAng + 0.4));
       ctx.closePath(); ctx.fill();
     }
-    ctx.restore();
   }
+  ctx.restore();
 }
 function drawTrajectory(pts) {
   if (pts.length < 2) return;
@@ -260,6 +289,10 @@ function drawPole() {
   for (const p of poles) {
     const col = p.strength > 0 ? "#4ea1ff" : p.strength < 0 ? "#ff6b6b" : "#888";
     const label = p.strength > 0 ? "N" : p.strength < 0 ? "S" : "0";
+    if (p === selected) {           // 选中环（黄）
+      ctx.beginPath(); ctx.arc(p.x, p.y, POLE_R + 9, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,221,87,0.9)"; ctx.lineWidth = 2; ctx.stroke();
+    }
     if (dragging === p) {
       ctx.beginPath(); ctx.arc(p.x, p.y, POLE_R + 6, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fill();
@@ -350,8 +383,27 @@ function onDown(e) {
   for (const pole of poles) {
     if (Math.hypot(p.x - pole.x, p.y - pole.y) <= POLE_R) {
       dragging = pole;
+      selected = pole;                       // 点击即选中
       dragOffset = { x: p.x - pole.x, y: p.y - pole.y };
+      strengthEl.value = pole.strength; strVal.textContent = pole.strength.toFixed(1);
       canvas.style.cursor = "grabbing";
+      break;
+    }
+  }
+}
+function onContext(e) {
+  e.preventDefault();                        // 右键删除磁极
+  const p = evtPos(e);
+  for (let i = 0; i < poles.length; i++) {
+    if (Math.hypot(p.x - poles[i].x, p.y - poles[i].y) <= POLE_R) {
+      if (poles.length > 1) {
+        if (selected === poles[i]) selected = poles[(i + 1) % poles.length];
+        poles.splice(i, 1);
+        strengthEl.value = selected.strength; strVal.textContent = selected.strength.toFixed(1);
+        setStatus("已删除一个磁极，剩余 " + poles.length + " 个", null);
+      } else {
+        setStatus("至少保留一个磁极", null);
+      }
       break;
     }
   }
@@ -371,18 +423,31 @@ function onUp() { dragging = null; canvas.style.cursor = "default"; }
 canvas.addEventListener("pointerdown", onDown);
 canvas.addEventListener("pointermove", onMove);
 window.addEventListener("pointerup", onUp);
+canvas.addEventListener("contextmenu", onContext);
 
 strengthEl.addEventListener("input", () => {
   const v = parseFloat(strengthEl.value);
-  poles[0].strength = v;
+  if (selected) selected.strength = v;       // 只改选中磁极
   strVal.textContent = v.toFixed(1);
 });
 flipBtn.addEventListener("click", () => {
-  const v = -poles[0].strength;
-  poles[0].strength = v;
+  if (!selected) return;
+  const v = -selected.strength;
+  selected.strength = v;
   strengthEl.value = v;
   strVal.textContent = v.toFixed(1);
 });
+function addPole(sign) {
+  if (poles.length >= MAX_POLES) { setStatus("磁极数量已达上限 (" + MAX_POLES + ")", null); return; }
+  const x = Math.max(40, Math.min(W - 40, W / 2 + (Math.random() * 140 - 70)));
+  const y = Math.max(40, Math.min(H - 40, H / 2 + (Math.random() * 140 - 70)));
+  const pol = { x, y, strength: sign * 5 };
+  poles.push(pol); selected = pol;
+  strengthEl.value = pol.strength; strVal.textContent = pol.strength.toFixed(1);
+  setStatus("已添加 " + (sign > 0 ? "N" : "S") + " 极，共 " + poles.length + " 个", null);
+}
+addNBtn.addEventListener("click", () => addPole(1));
+addSBtn.addEventListener("click", () => addPole(-1));
 pauseBtn.addEventListener("click", () => {
   running = !running;
   pauseBtn.textContent = running ? "暂停" : "继续";
@@ -390,6 +455,7 @@ pauseBtn.addEventListener("click", () => {
 });
 resetBtn.addEventListener("click", () => {
   poles = [{ x: W / 2, y: 140, strength: 5.0 }];
+  selected = poles[0];
   strengthEl.value = 5.0; strVal.textContent = "5.0";
   particles = []; hitCount = 0; targetGlow = 0; pulseTimer = 0; running = true;
   pauseBtn.textContent = "暂停";
