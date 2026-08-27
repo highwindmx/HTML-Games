@@ -128,6 +128,9 @@ class Track {
     this.center = catmullClosed(def.ctrl.map(p=>[CX+(p[0]-CX)*LS, CY+(p[1]-CY)*LS]), 14);  // 长度约 ×LS
     this.par = def.par * LS * 1000;                      // 基准时间随长度同比缩放（毫秒）
     this.n=this.center.length;
+    // 中心线周长（世界单位），供 AI 估算完赛时间
+    let per=0; for(let i=0;i<this.n;i++){ const a=this.center[i], b=this.center[(i+1)%this.n]; per+=Math.hypot(b[0]-a[0],b[1]-a[1]); }
+    this.perimeter=per;
     this.start=this.center[0];
     // 检查点：取中心线上 4 等分点，并记录该处切线方向（用于画发光门）
     this.checkpoints=[]; this.cpAngle=[];
@@ -577,15 +580,9 @@ const game=new (class Game {
     if(this.shake>0) this.shake*=Math.pow(0.85,f);
     if(this._crashCd>0) this._crashCd-=dt;
 
-    // 结算判定：玩家冲线后继续让对手跑完，再按真实名次评级
-    // 避免「玩家冲线即冻结、对手未完赛 → 直接判第 1 拿 S」
+    // 结算判定：玩家冲线即按真实名次 + 对手位置估算时间立即结算，不再等待
     if(this.car.finished){
-      const allDone=this.oppCars.every(o=>o.finished);
-      if(allDone){ this.endRace(); return; }
-      this.finishWait=(this.finishWait||0)+dt;
-      const lead=this.ranking.find(c=>!c.finished)||this.car;  // 相机跟随领先者，观看对手冲线
-      this.updateCamera(dt, lead.x, lead.y);
-      if(this.finishWait>45) this.endRace();                   // 兜底：对手卡死也照常结算
+      this.endRace();
       return;
     }
     this.updateCamera(dt);
@@ -608,8 +605,10 @@ const game=new (class Game {
     // 前瞻点：速度越快看得越远，但限制在合理范围避免切弯扑空
     const la=Math.max(4, Math.min(14, Math.round(o.speed*0.9)+3));
     const tp=c[(ci+la)%n];
-    // 把目标点朝中心线回拉一部分，偏移越大回正越强 → 自然收敛到中线、不贴边
-    const tgx=tp[ 0]-nx*off*0.6, tgy=tp[1]-ny*off*0.6;
+    // 目标点朝中心线回拉：偏移越大回拉越强（即便冲出也强力拉回中线，避免贴边卡死）
+    const offAbs=Math.abs(off);
+    const pull = offAbs>this.track.halfW ? 1.0 : 0.55;
+    const tgx=tp[0]-nx*off*pull, tgy=tp[1]-ny*off*pull;
     let desired=Math.atan2(tgy-o.y, tgx-o.x);
     let diff=desired-o.angle;
     while(diff>Math.PI) diff-=2*Math.PI;
@@ -617,10 +616,9 @@ const game=new (class Game {
     const input={up:false,down:false,left:false,right:false,boostActive:false};
     if(diff>0.05) input.right=true; else if(diff<-0.05) input.left=true;
     const align=Math.abs(diff), sk=o.type.skill||1;
-    const offAbs=Math.abs(off);
-    if(offAbs>this.track.halfW*0.85) input.up=false;  // 已冲出 → 先不加油，优先回线
-    else if(align < 0.3*sk) input.up=true;            // 对准 → 给油
-    else if(align > 0.9*sk) input.down=true;          // 前方弯急 → 收油
+    // 始终保留油门：冲出时草地减速会自然限速，切断油门反而会让车停死在边缘；仅前方弯极急时点刹
+    if(align < 0.4*sk) input.up=true;
+    else if(align > 1.0*sk) input.down=true;
     return input;
   }
   // 统一推进检查点 / 圈数（玩家记录圈速，对手只记账）
@@ -673,22 +671,34 @@ const game=new (class Game {
       }
     }
   }
-  // 实时排名：已完赛者按完赛时间，未完赛者按 圈数+赛道进度 排序
+  // 实时排名：全部车按完赛时间（玩家真实、对手真实或位置估算）排序
   computeRanking(){
     const cars=[this.car, ...this.oppCars];
     const arr=cars.map(c=>{
       const lap=(c===this.car)?this.lapTimes.length:(c.lap||0);
       const frac=(c._ci||0)/this.track.n;
-      return {c, lap, score:lap+frac, finished:!!c.finished, t:c.finishTime||0};
+      return {c, lap, score:lap+frac, finished:!!c.finished, t:(c.finishTime||Infinity)};
     });
     arr.sort((a,b)=>{
-      if(a.finished&&b.finished) return a.t-b.t;
-      if(a.finished) return -1;
-      if(b.finished) return 1;
-      return b.score-a.score;
+      if(a.t!==b.t) return a.t-b.t;                       // 完赛时间（含估算）升序
+      if(a.finished!==b.finished) return a.finished?-1:1; // 同时间则完赛者在前
+      return b.score-a.score;                             // 都未完赛则比进度
     });
     this.ranking=arr.map(x=>x.c);
     this.playerPos=this.ranking.indexOf(this.car)+1;
+  }
+  // 按当前位置+速度估算未完赛车的完赛时间（相对 totalStart 的毫秒）
+  estimateFinish(car, raceElapsed){
+    const speed=Math.max(car.speed, 0.4);                  // 防 0 速导致无穷
+    const P=this.track.perimeter||6000;                   // 中心线周长（世界单位）
+    const lapMs=P*1000/(speed*60*Math.min(1,car.type.skill||1)); // 当前速度跑一圈所需 ms
+    const progLaps=(car.lap||0)+((car._ci||0)/this.track.n);
+    const remain=Math.max(0, LAPS-progLaps);
+    let est=raceElapsed+remain*lapMs;
+    // 合理上限：即便以极速巡航也难快过此值，避免卡死时估计离谱地偏大
+    const fastLapMs=P*1000/(car.type.maxSpeed*60*0.65);
+    est=Math.min(est, raceElapsed+remain*fastLapMs);
+    return est;
   }
   updateCamera(dt, tx, ty){
     if(!this.car||!this.cam) return;
@@ -698,13 +708,20 @@ const game=new (class Game {
     this.cam.x += (tx-this.cam.x)*k;
     this.cam.y += (ty-this.cam.y)*k;
   }
-  // 玩家冲线后对手仍在跑时调用：按全部车真实名次评级
+  // 玩家冲线即结算：未完赛对手按当前位置估算完赛时间，无需等待
   endRace(){
     this.state="results";
     this.totalMs=this.car.finishTime;
-    this.computeRanking();
+    // 未完赛对手按其当前进度+速度估算完赛时间（相对 totalStart）
+    for(const o of this.oppCars){
+      if(o.finished) continue;
+      o.finishTime=this.estimateFinish(o, this.totalMs);
+      o.estimated=true;
+    }
+    this.computeRanking();              // 含估算时间，得出真实名次
+    // 评级以名次为主，末位永远不得 S
     const rank=this.playerPos;          // 1..5（1=第一）
-    const par=this.track.par;          // 已按赛道长度缩放的基准时间
+    const par=this.track.par;          // 已按赛道长度缩放
     let rating="C";
     if(rank===1) rating = (this.totalMs<=par) ? "S" : "A";
     else if(rank===2) rating="A";
@@ -928,11 +945,6 @@ const game=new (class Game {
     // 暂停
     if(this.paused){ ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 40px sans-serif";
       ctx.fillText("暂停 (P 继续)", CW/2, CH/2); }
-    // 玩家冲线后等待对手完赛的提示
-    if(this.car.finished && this.state==="race"){
-      ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,0.92)"; ctx.font="bold 26px sans-serif";
-      ctx.fillText("冲线！等待对手完赛…", CW/2, 130);
-    }
     // 操作提示
     ctx.textAlign="center"; ctx.fillStyle="rgba(160,176,214,0.7)"; ctx.font="12px sans-serif";
     ctx.fillText("ESC 退出  ·  R 重试  ·  P 暂停", CW/2, CH-14);
@@ -1000,12 +1012,13 @@ const game=new (class Game {
     for(let i=0;i<list.length;i++){
       const car=list[i], isP=(car===this.car);
       ctx.textAlign="left"; ctx.fillStyle=isP?"#ffffff":car.type.color;
-      const label=(i+1)+". "+(isP?("你 · "+car.type.name):car.type.name);
+      const label=(i+1)+". "+(isP?("你 · "+car.type.name):car.type.name)+(car.estimated?" (估)":"");
       ctx.fillText(label, CW/2-230, 250+i*32);
       ctx.textAlign="right";
       let res;
-      if(car.finished) res=(car===this.car?(this.totalMs/1000):(car.finishTime/1000)).toFixed(2)+"s";
-      else { const lap=(car===this.car)?this.lapTimes.length:(car.lap||0); res="第 "+(lap+1)+" 圈"; }
+      if(car===this.car) res=(this.totalMs/1000).toFixed(2)+"s";
+      else if(car.finished) res=(car.finishTime/1000).toFixed(2)+"s";
+      else res="≈"+(car.finishTime/1000).toFixed(2)+"s";
       ctx.fillStyle=isP?"#ffffff":"#aab6d6";
       ctx.fillText(res, CW/2+230, 250+i*32);
     }
