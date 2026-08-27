@@ -197,12 +197,6 @@ class Car {
     let vF=this.vx*fx+this.vy*fy;
     let vL=this.vx*rx+this.vy*ry;
 
-    // 油门 / 刹车
-    if(input.up)   vF += T.accel*f;
-    else if(input.down) vF -= T.brake*f;
-    else vF *= Math.pow(0.992, f);                 // 自然滚阻
-    if(input.boostActive) vF += T.accel*0.6*f;     // 氮气（可选，暂未绑键，保留）
-
     // 转向（低速减权，避免原地打转）
     const speedFactor=clamp(this.speed/3,0,1);
     let steer=0; if(input.left) steer-=1; if(input.right) steer+=1;
@@ -213,6 +207,12 @@ class Car {
     const rx2=-Math.sin(this.angle), ry2=Math.cos(this.angle);
     vF=this.vx*fx2+this.vy*fy2;
     vL=this.vx*rx2+this.vy*ry2;
+
+    // 油门 / 刹车 / 滚阻（必须在按新朝向重新分解之后施加，否则会被覆盖，导致油门/刹车无效）
+    if(input.up)   vF += T.accel*f;
+    else if(input.down) vF -= T.brake*f;
+    else vF *= Math.pow(0.992, f);                 // 自然滚阻
+    if(input.boostActive) vF += T.accel*0.6*f;     // 氮气（可选，暂未绑键，保留）
 
     // 表面：草地/沙地减速 + 降抓地
     const surf=this.track.surfaceAt(this.x,this.y);
@@ -361,6 +361,9 @@ const game=new (class Game {
   constructor(){
     this.state="menu";        // menu | select | countdown | race | results
     this.keys={};
+    this.keyBindings=this.loadKeys();   // 可自定义按键：{up,down,left,right} 各为 code 数组
+    this.codeMap={};                     // 反向映射 code->action
+    this.rebinding=null;                 // 重绑中：{action,slot}
     this.selTrack=0; this.selCar=0;
     this.track=null; this.car=null;
     this.particles=new ParticleSystem();
@@ -374,16 +377,48 @@ const game=new (class Game {
     requestAnimationFrame(this.loop);
   }
   bindInput(){
-    const map={ ArrowUp:"up",KeyW:"up", ArrowDown:"down",KeyS:"down",
-      ArrowLeft:"left",KeyA:"left", ArrowRight:"right",KeyD:"right" };
+    this.rebuildCodeMap();
     addEventListener("keydown",e=>{
-      if(map[e.code]){ this.keys[map[e.code]]=true; e.preventDefault(); }
+      // 重绑模式：捕获下一个按键作为该动作的键位
+      if(this.rebinding){
+        const {action, slot}=this.rebinding;
+        for(const a of ["up","down","left","right"])
+          this.keyBindings[a]=this.keyBindings[a].filter(c=>c!==e.code);
+        this.keyBindings[action][slot]=e.code;
+        this.saveKeys(); this.rebuildCodeMap();
+        this.rebinding=null; e.preventDefault(); return;
+      }
+      const act=this.codeMap[e.code];
+      if(act){ this.keys[act]=true; e.preventDefault(); }
       if(e.code==="Enter" && this.state==="menu") this.state="select";
       if(e.code==="KeyM") this.toggleMute();
       if(e.code==="KeyP" && this.state==="race") this.paused=!this.paused;
     });
-    addEventListener("keyup",e=>{ if(map[e.code]) this.keys[map[e.code]]=false; });
+    addEventListener("keyup",e=>{ const act=this.codeMap[e.code]; if(act) this.keys[act]=false; });
     canvas.addEventListener("pointerdown",e=>this.onClick(e));
+  }
+  defaultKeys(){ return { up:["ArrowUp","KeyW"], down:["ArrowDown","KeyS"], left:["ArrowLeft","KeyA"], right:["ArrowRight","KeyD"] }; }
+  loadKeys(){
+    try{ const s=localStorage.getItem("nd_keys"); if(s){ const o=JSON.parse(s);
+      const d=this.defaultKeys();
+      for(const a of ["up","down","left","right"]) if(!Array.isArray(o[a])||!o[a].length) o[a]=d[a];
+      return o; } }catch(e){}
+    return this.defaultKeys();
+  }
+  saveKeys(){ try{ localStorage.setItem("nd_keys", JSON.stringify(this.keyBindings)); }catch(e){} }
+  rebuildCodeMap(){
+    const m={};
+    for(const a of ["up","down","left","right"]) for(const c of (this.keyBindings[a]||[])) m[c]=a;
+    this.codeMap=m;
+  }
+  prettyKey(code){
+    if(!code) return "—";
+    const map={ArrowUp:"↑",ArrowDown:"↓",ArrowLeft:"←",ArrowRight:"→",Space:"空格"};
+    if(map[code]) return map[code];
+    if(code.startsWith("Key")) return code.slice(3);
+    if(code.startsWith("Digit")) return code.slice(5);
+    if(code.startsWith("Numpad")) return "Num"+code.slice(6);
+    return code;
   }
   startAudio(){
     if(this.audio||this.muted) return;
@@ -516,6 +551,7 @@ const game=new (class Game {
     ctx.save(); ctx.translate(sx,sy);
 
     if(this.state==="menu"||this.state==="help"){ this.renderMenu(); ctx.restore(); return; }
+    if(this.state==="controls"){ this.renderControls(); ctx.restore(); return; }
     if(this.state==="select"){ this.renderSelect(); ctx.restore(); return; }
 
     // 比赛 / 倒计时 / 结算 都画赛道
@@ -549,8 +585,9 @@ const game=new (class Game {
     ctx.restore();
     ctx.fillStyle="#aab6d6"; ctx.font="15px sans-serif";
     ctx.fillText("高速入弯 → 侧滑 → 反打方向 → 给油出弯", CW/2, 340);
-    this.btn(CW/2-110, 400, 220, 52, "开始游戏", "#4ea1ff", ()=>this.state="select");
-    this.btn(CW/2-110, 466, 220, 52, "操作说明", "#54d6a0", ()=>this.state="help");
+    this.btn(CW/2-120, 380, 240, 52, "开始游戏", "#4ea1ff", ()=>this.state="select");
+    this.btn(CW/2-120, 444, 240, 52, "按键设置", "#ffd166", ()=>this.state="controls");
+    this.btn(CW/2-120, 508, 240, 52, "操作说明", "#54d6a0", ()=>this.state="help");
     if(this.state==="help") this.renderHelp();
   }
   renderHelp(){
@@ -564,12 +601,39 @@ const game=new (class Game {
       "高速转弯自动进入漂移，反打方向控制滑移角度",
       "漂移越久、滑移角越大，漂移积分越高",
       "P 暂停   M 静音",
-      "",
+      "按键可在主菜单「按键设置」中自定义（每个动作可绑 2 个键）",
       "目标：3 圈内跑完，依次穿过 4 个检查点再冲过起点线",
       "草地/沙地会大幅减速；撞墙反弹并损失速度",
     ];
     lines.forEach((t,i)=>ctx.fillText(t, CW/2-300, 190+i*40));
     ctx.textAlign="center"; this.btn(CW/2-90, 600, 180, 46, "返回", "#ff5d8f", ()=>this.state="menu");
+  }
+  renderControls(){
+    ctx.fillStyle="#06070d"; ctx.fillRect(0,0,CW,CH);
+    ctx.textAlign="center"; ctx.fillStyle="#eaf2ff"; ctx.font="bold 34px sans-serif";
+    ctx.fillText("按键设置", CW/2, 70);
+    ctx.font="14px sans-serif"; ctx.fillStyle="#9fb0d6";
+    ctx.fillText("点击右侧键位 → 按下新键完成重绑（每个动作可绑 2 个键）", CW/2, 104);
+    const acts=[["up","油门 / 加速"],["down","刹车 / 倒车"],["left","左转"],["right","右转"]];
+    const x=CW/2-260, w=520;
+    acts.forEach((a,i)=>{
+      const y=140+i*72;
+      ctx.textAlign="left"; ctx.fillStyle="#dfe6ff"; ctx.font="bold 20px sans-serif";
+      ctx.fillText(a[1], x, y+34);
+      for(let s=0;s<2;s++){
+        const kx=x+200+s*150, kw=140, ky=y, kh=48;
+        const listening = this.rebinding && this.rebinding.action===a[0] && this.rebinding.slot===s;
+        ctx.fillStyle = listening ? "rgba(78,161,255,0.25)" : "rgba(14,19,32,0.9)";
+        ctx.fillRect(kx,ky,kw,kh);
+        ctx.strokeStyle = listening ? "#4ea1ff" : "#33405e"; ctx.lineWidth=2; ctx.strokeRect(kx,ky,kw,kh);
+        ctx.fillStyle = listening ? "#4ea1ff" : "#cdd8f5"; ctx.textAlign="center"; ctx.font="bold 18px sans-serif";
+        const label = listening ? "按下按键…" : this.prettyKey(this.keyBindings[a[0]][s]);
+        ctx.fillText(label, kx+kw/2, ky+kh/2+6);
+        this._hitRects.push({x:kx,y:ky,w:kw,h:kh,fn:()=>{ this.rebinding={action:a[0],slot:s}; }});
+      }
+    });
+    this.btn(CW/2-220, 470, 200, 54, "恢复默认", "#ff5d8f", ()=>{ this.rebinding=null; this.keyBindings=this.defaultKeys(); this.saveKeys(); this.rebuildCodeMap(); });
+    this.btn(CW/2+20, 470, 200, 54, "返回", "#54d6a0", ()=>{ this.rebinding=null; this.state="menu"; });
   }
   renderSelect(){
     ctx.fillStyle="#06070d"; ctx.fillRect(0,0,CW,CH);
