@@ -40,6 +40,7 @@ const COLS = Math.ceil(CW / TS), ROWS = Math.ceil(CH / TS);
 const T_GRASS = 0, T_ROAD = 1, T_SAND = 2, T_WALL = 3;
 const LAPS = 3;
 const DRIFT_MIN_SPEED = 3.2;         // 低于此速度不判定漂移
+const CAM_ZOOM = 1.8;                // 比赛中相机缩放：局部赛道更清晰、车更易操控
 
 // ---------- 车辆属性（均可调）----------
 const CAR_TYPES = [
@@ -470,6 +471,7 @@ const game=new (class Game {
     this.ghost=null; this.ghostRec=[]; this.ghostFrames=this.loadGhost(t);
     this.countdown=3.2; this.state="countdown";
     this.paused=false;
+    this.cam={x:this.car.x, y:this.car.y, zoom:CAM_ZOOM};   // 相机初始对准起点
     this.startAudio();
   }
   loadBest(t){ try{ return parseFloat(localStorage.getItem("nd_best_"+t))||null; }catch(e){ return null; } }
@@ -526,6 +528,16 @@ const game=new (class Game {
     this.particles.update(f); this.skids.update(f);
     if(this.shake>0) this.shake*=Math.pow(0.85,f);
     if(this._crashCd>0) this._crashCd-=dt;
+    this.updateCamera(dt);
+  }
+  updateCamera(dt){
+    if(!this.car||!this.cam) return;
+    // 平滑跟随 + 速度方向前瞻：提前看到即将进入的弯道
+    const tx=this.car.x + this.car.vx*0.3;
+    const ty=this.car.y + this.car.vy*0.3;
+    const k=1-Math.pow(0.0025, dt);   // 帧率无关平滑，时间常数≈0.3s（镜头在范围内柔和跟随）
+    this.cam.x += (tx-this.cam.x)*k;
+    this.cam.y += (ty-this.cam.y)*k;
   }
   finishRace(now){
     this.car.finished=true; this.state="results";
@@ -570,7 +582,11 @@ const game=new (class Game {
     if(this.state==="controls"){ this.renderControls(); ctx.restore(); return; }
     if(this.state==="select"){ this.renderSelect(); ctx.restore(); return; }
 
-    // 比赛 / 倒计时 / 结算 都画赛道
+    // 比赛 / 倒计时 / 结算：相机跟随，仅展示车周围局部赛道
+    ctx.fillStyle="#0b0f17"; ctx.fillRect(0,0,CW,CH);   // 屏幕空间底，避免相机视口外露黑
+    ctx.save();
+    const z=this.cam?this.cam.zoom:CAM_ZOOM;
+    ctx.translate(CW/2, CH/2); ctx.scale(z,z); ctx.translate(-this.cam.x, -this.cam.y);
     this.track.render(ctx);
     this.skids.render(ctx);
     // 幽灵车（破纪录后或读取历史最佳时显示）
@@ -581,6 +597,7 @@ const game=new (class Game {
     }
     this.particles.render(ctx);
     this.car.render(ctx);
+    ctx.restore();
 
     if(this.state==="countdown") this.renderCountdown();
     this.renderHUD();
