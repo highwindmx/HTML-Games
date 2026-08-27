@@ -34,6 +34,7 @@ class Ship {
     this.visScale = 1;
     this.mesh3d = null;   // 预留视觉容器（2.5D 由 ShipSprite 注入 ship.container；本版未使用）
     this.trail = [];      // 航迹面包屑：供僚机贪吃蛇式跟随（Ship.update 记录）
+    this._burstCd = 0;    // 炸膛冷却计时（未装填强行开火惩罚用）
   }
 
   update(dt, wind) {
@@ -77,6 +78,8 @@ class Ship {
     if (this._hitFlash > 0) this._hitFlash = Math.max(0, this._hitFlash - dt);
     // 船首冲撞冷却计时
     if (this._ramCd > 0) this._ramCd = Math.max(0, this._ramCd - dt);
+    // 炸膛冷却计时
+    if (this._burstCd > 0) this._burstCd = Math.max(0, this._burstCd - dt);
   }
 
   // 开火：成功返回 {side, damage(确定性,无概率), travelTime}，失败返回 null。

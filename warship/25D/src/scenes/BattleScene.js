@@ -456,11 +456,41 @@ class BattleScene extends Phaser.Scene {
     for (const a of this.players) {
       if (a.hp <= 0) continue;
       if (a[side + 'Reload'] > 0) {
-        if (a === this.flagship) this.onFireFailed(a, side, 'reload'); // 仅旗舰提示装填中
+        if (a === this.flagship) this.triggerBurst(a, side); // 旗舰装填中强行下令开火 → 炸膛
         continue;
       }
       this.fireBroadside(a, side);
     }
+  }
+
+  // 炸膛：玩家在未装填完毕时强行下令该舷开火 → 自伤 + 爆炸特效 + 该舷重装填惩罚。
+  // 仅作用于旗舰（玩家直接操作的船）；自伤不享受减伤倍率（操作失误的惩罚）。
+  triggerBurst(ship, side) {
+    if (ship._burstCd > 0) { this.onFireFailed(ship, side, 'reload'); return; } // 冷却内仅提示
+    const name = side === 'port' ? '左舷' : '右舷';
+    ship.hp = Math.max(0, ship.hp - C.BURST_DAMAGE);   // 自伤（固定值，无视减伤）
+    ship._hitFlash = 0.32;                              // 受击闪红
+    ship._burstCd = C.BURST_CD;                        // 炸膛冷却
+    ship[side + 'Reload'] = C.RELOAD_TIME * ship.reloadMul; // 炸膛后该舷需重新装填
+    this.spawnExplosion(ship.x, ship.y);               // 爆炸特效
+    this.cameras.main.shake(220, 0.012);               // 屏幕震动
+    this.hud.flashHint('⚠ ' + name + '未装填，炸膛！', '#ff5a4a');
+  }
+
+  // 炸膛爆炸特效：火球核心 + 飞溅火星 + 外环，复用 hits 生命周期淡出（与 spawnHit 同）
+  spawnExplosion(x, y) {
+    const g = this.add.graphics().setDepth(50002);
+    g.fillStyle(0xffe08a, 1); g.fillCircle(0, 0, 14);
+    g.fillStyle(0xff7b3a, 1); g.fillCircle(0, 0, 9);
+    g.fillStyle(0xffd34d, 1);
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const len = 12 + Math.random() * 26;
+      g.fillCircle(Math.cos(a) * len, Math.sin(a) * len, 2 + Math.random() * 2);
+    }
+    g.lineStyle(3, 0xff5a3a, 0.9); g.strokeCircle(0, 0, 18);
+    g.setPosition(x, y);
+    this.hits.push({ g, t: 0, max: 0.5, hit: true, wx: x, wy: y });
   }
 
   // 敌整队同步齐射：敌方领队下令打哪舷，领队 + 所有存活子舰在该舷已装填完毕时同时开火。

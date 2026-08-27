@@ -38,6 +38,8 @@ const C = {
   BROADSIDE_ARC: 50,      // deg，垂直于船身多少度内可有效开火 [PLACEHOLDER]
   FIRE_ARC_RADIUS: 90,    // px，八字炮射弧半径（距离船舷一定距离处的"可射击"指示弧）[PLACEHOLDER]
   RELOAD_TIME: 4.0,       // s，单侧装填 [PLACEHOLDER]
+  BURST_DAMAGE: 8,        // 炸膛自伤（约占满血 8%）：未装填强行下令开火惩罚
+  BURST_CD: 1.2,          // s，炸膛后冷却，防止连点瞬秒
   CANNON_RANGE: 320,      // px，有效射程（被炮击/开火的判定范围；略缩避免从过远被糊）[PLACEHOLDER]
   CANNON_DAMAGE: 14,      // 每轮齐射命中伤害（近距基准）[PLACEHOLDER]
   DAMAGE_RANGE_FALLOFF: 0.4, // 炮程边缘伤害保留比例 0..1：近=100%，边缘=40% [PLACEHOLDER]
