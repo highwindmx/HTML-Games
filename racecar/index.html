@@ -37,7 +37,7 @@
 const CW = 1280, CH = 720;          // 画布逻辑分辨率（16:9）
 const TS = 32;                       // 瓦片尺寸
 const COLS = Math.ceil(CW / TS), ROWS = Math.ceil(CH / TS);
-const T_GRASS = 0, T_ROAD = 1, T_SAND = 2, T_WALL = 3;
+const T_GRASS = 0, T_ROAD = 1;
 const LAPS = 3;
 const DRIFT_MIN_SPEED = 3.2;         // 低于此速度不判定漂移
 const CAM_ZOOM = 1.8;                // 比赛中相机缩放：局部赛道更清晰、车更易操控
@@ -98,7 +98,6 @@ class Track {
     this.center = catmullClosed(def.ctrl, 14);   // 闭合中心线采样点
     this.n=this.center.length;
     this.start=this.center[0];
-    this._rasterize();
     // 检查点：取中心线上 4 等分点
     this.checkpoints=[];
     for(let k=0;k<4;k++){ const i=Math.floor(k*this.n/4); this.checkpoints.push(this.center[i]); }
@@ -106,35 +105,19 @@ class Track {
     const a=Math.atan2(this.center[1][1]-this.start[1], this.center[1][0]-this.start[0]);
     this.startAngle=a;
   }
-  _rasterize(){
-    this.tiles=[];
-    for(let r=0;r<ROWS;r++){
-      const row=[]; const y=r*TS+TS/2;
-      for(let c=0;c<COLS;c++){
-        const x=c*TS+TS/2;
-        let minD=1e9;
-        for(let i=0;i<this.n;i++){
-          const a=this.center[i], b=this.center[(i+1)%this.n];
-          const d=distToSeg(x,y,a[0],a[1],b[0],b[1]);
-          if(d<minD) minD=d;
-        }
-        let t;
-        if(minD<=this.halfW) t=T_ROAD;
-        else if(minD<=this.halfW+16) t=T_WALL;
-        else t=T_GRASS;
-        row.push(t);
-      }
-      this.tiles.push(row);
+  // 点到中心线的最近距离（平滑判定路面/草地，无锯齿、无硬墙）
+  distToCenter(x,y){
+    let best=1e18;
+    for(let i=0;i<this.n;i++){
+      const a=this.center[i], b=this.center[(i+1)%this.n];
+      const d=distToSeg(x,y,a[0],a[1],b[0],b[1]);
+      if(d<best) best=d;
     }
+    return best;
   }
-  tileAt(x,y){
-    const c=Math.floor(x/TS), r=Math.floor(y/TS);
-    if(c<0||c>=COLS||r<0||r>=ROWS) return T_WALL;   // 界外即墙
-    return this.tiles[r][c];
-  }
-  // 返回某点表面类型（边界外视为墙）
-  surfaceAt(x,y){ return this.tileAt(x,y); }
-  // 距车最近的中心线采样点 → 外向单位法线（指向车所在一侧的墙）
+  // 表面：路面内为 ROAD；之外为 GRASS（场地赛可冲出，仅减速、不碰撞）
+  surfaceAt(x,y){ return this.distToCenter(x,y) <= this.halfW ? T_ROAD : T_GRASS; }
+  // 到最近中心线的单位法线（指向车辆一侧）
   normalAt(x,y){
     let best=1e18, bx=this.center[0][0], by=this.center[0][1];
     for(const p of this.center){ const dx=p[0]-x, dy=p[1]-y, d=dx*dx+dy*dy; if(d<best){best=d;bx=p[0];by=p[1];} }
@@ -142,43 +125,31 @@ class Track {
     return {x:nx/L, y:ny/L};
   }
   render(ctx){
-    // 草地底
-    ctx.fillStyle="#0b0f17"; ctx.fillRect(0,0,CW,CH);
-    // 路面（深色）+ 沙地（偏黄）
-    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
-      const t=this.tiles[r][c]; if(t===T_GRASS||t===T_WALL) continue;
-      const x=c*TS,y=r*TS;
-      ctx.fillStyle = t===T_SAND ? "#3a3422" : "#151a26";
-      ctx.fillRect(x,y,TS,TS);
-    }
-    // 霓虹边线：路面/沙地 与 非路 相邻处画发光描边
-    ctx.lineWidth=3; ctx.strokeStyle=this.color;
-    ctx.shadowColor=this.color; ctx.shadowBlur=10;
-    ctx.beginPath();
-    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
-      const t=this.tiles[r][c];
-      if(t!==T_ROAD && t!==T_SAND) continue;
-      const x=c*TS,y=r*TS;
-      if(this.tileAt(x-TS/2,y)===T_WALL||this.tileAt(x-TS/2,y)===T_GRASS){ ctx.moveTo(x,y); ctx.lineTo(x,y+TS); }
-      if(this.tileAt(x+TS/2,y)===T_WALL||this.tileAt(x+TS/2,y)===T_GRASS){ ctx.moveTo(x+TS,y); ctx.lineTo(x+TS,y+TS); }
-      if(this.tileAt(x,y-TS/2)===T_WALL||this.tileAt(x,y-TS/2)===T_GRASS){ ctx.moveTo(x,y); ctx.lineTo(x+TS,y); }
-      if(this.tileAt(x,y+TS/2)===T_WALL||this.tileAt(x,y+TS/2)===T_GRASS){ ctx.moveTo(x,y+TS); ctx.lineTo(x+TS,y+TS); }
-    }
-    ctx.stroke(); ctx.shadowBlur=0;
-    // 起点/终点线（棋盘格）
+    // 草地底（世界大范围，确保相机任意位置都覆盖）
+    ctx.fillStyle="#0b0f17"; ctx.fillRect(-3000,-3000,6000,6000);
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    const path=()=>{ ctx.beginPath(); ctx.moveTo(this.center[0][0],this.center[0][1]);
+      for(let i=1;i<this.n;i++) ctx.lineTo(this.center[i][0],this.center[i][1]); ctx.closePath(); };
+    // 霓虹外发光边
+    ctx.save();
+    ctx.strokeStyle=this.color; ctx.shadowColor=this.color; ctx.shadowBlur=22; ctx.lineWidth=this.width+12;
+    path(); ctx.stroke();
+    // 路面
+    ctx.shadowBlur=0; ctx.strokeStyle="#161d2c"; ctx.lineWidth=this.width;
+    path(); ctx.stroke();
+    // 中线虚线（装饰）
+    ctx.strokeStyle="rgba(255,255,255,0.10)"; ctx.lineWidth=2; ctx.setLineDash([14,18]);
+    path(); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
+    // 起点/终点线（棋盘格，沿切线方向）
     const s=this.start, a=this.startAngle;
     ctx.save(); ctx.translate(s[0],s[1]); ctx.rotate(a+Math.PI/2);
     const w=this.halfW;
-    for(let i=0;i<8;i++){
-      ctx.fillStyle=(i%2===0)?"#ffffff":"#111";
-      ctx.fillRect(-w + i*(2*w/8), -5, 2*w/8, 10);
-    }
+    for(let i=0;i<8;i++){ ctx.fillStyle=(i%2===0)?"#ffffff":"#111"; ctx.fillRect(-w+i*(2*w/8),-5,2*w/8,10); }
     ctx.restore();
-    // 检查点提示线
+    // 检查点提示
     ctx.strokeStyle="rgba(255,255,255,0.18)"; ctx.lineWidth=2; ctx.setLineDash([4,6]);
-    for(const cp of this.checkpoints){
-      ctx.beginPath(); ctx.arc(cp[0],cp[1],6,0,Math.PI*2); ctx.stroke();
-    }
+    for(const cp of this.checkpoints){ ctx.beginPath(); ctx.arc(cp[0],cp[1],6,0,Math.PI*2); ctx.stroke(); }
     ctx.setLineDash([]);
   }
 }
@@ -193,7 +164,6 @@ class Car {
     this.angle=track.startAngle;
     this.vx=0; this.vy=0;
     this.drifting=false; this.lap=0; this.nextCp=0; this.finished=false;
-    this.lastValid={x:this.x,y:this.y};
     this.driftCombo=0; this.driftScore=0;
     this.w=26; this.h=14;
   }
@@ -222,11 +192,11 @@ class Car {
     else vF *= Math.pow(0.992, f);                 // 自然滚阻
     if(input.boostActive) vF += T.accel*0.6*f;     // 氮气（可选，暂未绑键，保留）
 
-    // 表面：草地/沙地减速 + 降抓地
+    // 表面：冲出赛道进入草地 → 大幅减速 + 降抓地（场地赛可冲出，不碰撞）
     const surf=this.track.surfaceAt(this.x,this.y);
-    let latFric=T.normalLat, maxV=T.maxSpeed, fwdDrag=1;
-    if(surf===T_SAND){ maxV*=0.55; latFric=Math.min(0.96,T.normalLat+0.08); vF*=Math.pow(0.94,f); }
-    else if(surf===T_GRASS){ maxV*=0.4; latFric=Math.min(0.97,T.normalLat+0.1); vF*=Math.pow(0.9,f); }
+    let latFric=T.normalLat, maxV=T.maxSpeed;
+    if(surf!==T_ROAD){ maxV*=0.5; latFric=Math.min(0.97,T.normalLat+0.12); vF*=Math.pow(0.92,f); this.offTrack=true; }
+    else this.offTrack=false;
 
     // 漂移判定：高速 + 横向滑移超阈值
     const slip=Math.abs(vL);
@@ -257,28 +227,7 @@ class Car {
     // 位移
     this.x += this.vx*f; this.y += this.vy*f;
 
-    // 碰撞：采样四角
-    const hw=this.w/2, hh=this.h/2;
-    const corners=[[Math.cos(this.angle)*hw-Math.sin(this.angle)*hh, Math.sin(this.angle)*hw+Math.cos(this.angle)*hh],
-                   [Math.cos(this.angle)*hw+Math.sin(this.angle)*hh, Math.sin(this.angle)*hw-Math.cos(this.angle)*hh],
-                   [-Math.cos(this.angle)*hw-Math.sin(this.angle)*hh,-Math.sin(this.angle)*hw+Math.cos(this.angle)*hh],
-                   [-Math.cos(this.angle)*hw+Math.sin(this.angle)*hh,-Math.sin(this.angle)*hw-Math.cos(this.angle)*hh]];
-    let hitWall=false;
-    for(const [ox,oy] of corners){
-      if(this.track.surfaceAt(this.x+ox,this.y+oy)!==T_ROAD){ hitWall=true; break; }
-    }
-    if(hitWall){
-      // 回退到上一合法位置；沿墙法线削去朝墙分量（贴墙滑行），不再夸张 180° 反弹
-      this.x=this.lastValid.x; this.y=this.lastValid.y;
-      const n=this.track.normalAt(this.x,this.y);
-      const vn=this.vx*n.x+this.vy*n.y;
-      if(vn>0){ this.vx-=vn*n.x; this.vy-=vn*n.y; }   // 去掉朝墙外的速度分量
-      this.x-=n.x*3; this.y-=n.y*3;                    // 轻微推回赛道内，避免贴边反复触发
-      this.vx*=0.82; this.vy*=0.82;                    // 撞墙轻微掉速
-      game.onCrash(this.x,this.y);
-    } else {
-      this.lastValid.x=this.x; this.lastValid.y=this.y;
-    }
+    // 无碰撞：场地赛可冲出赛道，仅草地减速（见上方 surface 处理），永不卡墙
   }
   render(ctx){
     ctx.save(); ctx.translate(this.x,this.y); ctx.rotate(this.angle);
@@ -748,6 +697,8 @@ const game=new (class Game {
     // 漂移状态字
     if(c.drifting){ ctx.textAlign="center"; ctx.fillStyle="#ff8c42"; ctx.font="bold 20px sans-serif";
       ctx.fillText("DRIFT!", CW/2, 60); }
+    if(c.offTrack){ ctx.textAlign="center"; ctx.fillStyle="#ffd166"; ctx.font="bold 20px sans-serif";
+      ctx.fillText("冲出赛道 · 减速中", CW/2, 92); }
     // 迷你地图
     this.renderMinimap();
     // 暂停
