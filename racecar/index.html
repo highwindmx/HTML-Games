@@ -98,9 +98,13 @@ class Track {
     this.center = catmullClosed(def.ctrl, 14);   // 闭合中心线采样点
     this.n=this.center.length;
     this.start=this.center[0];
-    // 检查点：取中心线上 4 等分点
-    this.checkpoints=[];
-    for(let k=0;k<4;k++){ const i=Math.floor(k*this.n/4); this.checkpoints.push(this.center[i]); }
+    // 检查点：取中心线上 4 等分点，并记录该处切线方向（用于画发光门）
+    this.checkpoints=[]; this.cpAngle=[];
+    for(let k=0;k<4;k++){ const i=Math.floor(k*this.n/4); const p=this.center[i];
+      this.checkpoints.push(p);
+      const q=this.center[(i+1)%this.n];
+      this.cpAngle.push(Math.atan2(q[1]-p[1], q[0]-p[0]));
+    }
     // 朝向：指向中心线第 1 个采样点
     const a=Math.atan2(this.center[1][1]-this.start[1], this.center[1][0]-this.start[0]);
     this.startAngle=a;
@@ -124,7 +128,7 @@ class Track {
     let nx=x-bx, ny=y-by; const L=Math.hypot(nx,ny)||1;
     return {x:nx/L, y:ny/L};
   }
-  render(ctx){
+  render(ctx, nextCpIdx){
     // 草地底（世界大范围，确保相机任意位置都覆盖）
     ctx.fillStyle="#0b0f17"; ctx.fillRect(-3000,-3000,6000,6000);
     ctx.lineCap="round"; ctx.lineJoin="round";
@@ -147,10 +151,33 @@ class Track {
     const w=this.halfW;
     for(let i=0;i<8;i++){ ctx.fillStyle=(i%2===0)?"#ffffff":"#111"; ctx.fillRect(-w+i*(2*w/8),-5,2*w/8,10); }
     ctx.restore();
-    // 检查点提示
-    ctx.strokeStyle="rgba(255,255,255,0.18)"; ctx.lineWidth=2; ctx.setLineDash([4,6]);
-    for(const cp of this.checkpoints){ ctx.beginPath(); ctx.arc(cp[0],cp[1],6,0,Math.PI*2); ctx.stroke(); }
-    ctx.setLineDash([]);
+    // 检查点提示：下一个高亮脉冲 + 发光门；已过变绿；其余微亮
+    const t=performance.now()/1000;
+    const nextCp=(typeof nextCpIdx==="number")?nextCpIdx:0;
+    for(let k=0;k<this.checkpoints.length;k++){
+      const cp=this.checkpoints[k];
+      const isNext=(k===nextCp), passed=(k<nextCp);
+      const pulse=0.5+0.5*Math.sin(t*6);
+      ctx.save(); ctx.translate(cp[0],cp[1]);
+      if(isNext){
+        ctx.save(); ctx.rotate(this.cpAngle[k]);
+        ctx.strokeStyle="#ffd166"; ctx.shadowColor="#ffd166"; ctx.shadowBlur=16+pulse*16;
+        ctx.lineWidth=6; ctx.globalAlpha=0.9;
+        ctx.beginPath(); ctx.moveTo(-this.halfW,0); ctx.lineTo(this.halfW,0); ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle="rgba(255,209,102,"+(0.4+pulse*0.5)+")"; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.arc(0,0,18+pulse*10,0,Math.PI*2); ctx.stroke();
+        ctx.fillStyle="rgba(255,224,150,0.95)"; ctx.font="bold 15px sans-serif"; ctx.textAlign="center";
+        ctx.fillText(String(k+1), 0, -28);
+      } else if(passed){
+        ctx.fillStyle="rgba(84,214,160,0.75)";
+        ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill();
+      } else {
+        ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=2; ctx.setLineDash([4,6]);
+        ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
   }
 }
 
@@ -536,7 +563,7 @@ const game=new (class Game {
     ctx.save();
     const z=this.cam?this.cam.zoom:CAM_ZOOM;
     ctx.translate(CW/2, CH/2); ctx.scale(z,z); ctx.translate(-this.cam.x, -this.cam.y);
-    this.track.render(ctx);
+    this.track.render(ctx, this.car ? this.car.nextCp : 0);
     this.skids.render(ctx);
     // 幽灵车（破纪录后或读取历史最佳时显示）
     if(this.state==="race" && this.ghost && this.ghost.length){
@@ -585,7 +612,7 @@ const game=new (class Game {
       "P 暂停   M 静音",
       "按键可在主菜单「按键设置」中自定义（每个动作可绑 2 个键）",
       "目标：3 圈内跑完，依次穿过 4 个检查点再冲过起点线",
-      "草地/沙地会大幅减速；撞墙反弹并损失速度",
+      "草地会大幅减速（可冲出、不碰撞）；黄色发光门为下一个检查点",
     ];
     lines.forEach((t,i)=>ctx.fillText(t, CW/2-300, 190+i*40));
     ctx.textAlign="center"; this.btn(CW/2-90, 600, 180, 46, "返回", "#ff5d8f", ()=>this.state="menu");
@@ -701,9 +728,38 @@ const game=new (class Game {
       ctx.fillText("冲出赛道 · 减速中", CW/2, 92); }
     // 迷你地图
     this.renderMinimap();
+    // 下一个检查点屏幕外时的边缘指引箭头
+    this.renderNextCpArrow(ctx);
     // 暂停
     if(this.paused){ ctx.textAlign="center"; ctx.fillStyle="#fff"; ctx.font="bold 40px sans-serif";
       ctx.fillText("暂停 (P 继续)", CW/2, CH/2); }
+  }
+  renderNextCpArrow(ctx){
+    if(!this.car || this.state!=="race" || this.car.finished) return;
+    if(this.car.nextCp>=this.track.checkpoints.length) return;   // 已过全部检查点，等冲线
+    const cp=this.track.checkpoints[this.car.nextCp];
+    const z=this.cam?this.cam.zoom:CAM_ZOOM;
+    // 检查点屏幕坐标
+    const sx=CW/2+(cp[0]-this.cam.x)*z, sy=CH/2+(cp[1]-this.cam.y)*z;
+    const margin=80;
+    const onScreen = sx>margin && sx<CW-margin && sy>margin && sy<CH-margin;
+    if(onScreen) return;   // 世界里的发光门已可见，无需箭头
+    // 屏幕边缘箭头（指向检查点方向）
+    const ang=Math.atan2(sy-CH/2, sx-CW/2);
+    const r=Math.min(CW,CH)/2 - 80;
+    const ax=CW/2+Math.cos(ang)*r, ay=CH/2+Math.sin(ang)*r;
+    const pulse=0.6+0.4*Math.sin(performance.now()/250);
+    ctx.save();
+    ctx.translate(ax,ay); ctx.rotate(ang);
+    ctx.fillStyle="rgba(255,209,102,"+pulse.toFixed(2)+")";
+    ctx.shadowColor="#ffd166"; ctx.shadowBlur=14;
+    ctx.beginPath(); ctx.moveTo(20,0); ctx.lineTo(-14,-13); ctx.lineTo(-14,13); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // 距离（世界单位近似）
+    const dist=Math.hypot(cp[0]-this.car.x, cp[1]-this.car.y);
+    ctx.fillStyle="#ffd166"; ctx.font="bold 14px sans-serif"; ctx.textAlign="center";
+    ctx.fillText((dist/14).toFixed(0)+"m", ax, ay+(Math.sin(ang)>0?34:-24));
+    ctx.shadowBlur=0;
   }
   renderMinimap(){
     const mx=CW-150, my=110, mw=126, mh=72;
