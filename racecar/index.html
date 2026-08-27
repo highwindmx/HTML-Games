@@ -96,11 +96,11 @@ class Track {
     this.width=def.width; this.halfW=def.width/2;
     this.center = catmullClosed(def.ctrl, 14);   // 闭合中心线采样点
     this.n=this.center.length;
+    this.start=this.center[0];
     this._rasterize();
     // 检查点：取中心线上 4 等分点
     this.checkpoints=[];
     for(let k=0;k<4;k++){ const i=Math.floor(k*this.n/4); this.checkpoints.push(this.center[i]); }
-    this.start=this.center[0];
     // 朝向：指向中心线第 1 个采样点
     const a=Math.atan2(this.center[1][1]-this.start[1], this.center[1][0]-this.start[0]);
     this.startAngle=a;
@@ -121,8 +121,6 @@ class Track {
         if(minD<=this.halfW) t=T_ROAD;
         else if(minD<=this.halfW+16) t=T_WALL;
         else t=T_GRASS;
-        // 沙地陷阱：靠近底部一段路面改成沙地
-        if(t===T_ROAD && y>this.start[1]+this.halfW+40 && y<CH-60 && x>this.start[0]-this.halfW-30 && x<this.start[0]+this.halfW+30 && Math.random()<0.0) t=T_SAND;
         row.push(t);
       }
       this.tiles.push(row);
@@ -622,7 +620,7 @@ const game=new (class Game {
     const c=this.car, now=performance.now();
     // 左上：圈数
     ctx.textAlign="left"; ctx.fillStyle="#dfe6ff"; ctx.font="bold 22px sans-serif";
-    ctx.fillText("圈 "+(Math.min(c.lapTimes.length+1,LAPS))+" / "+LAPS, 24, 36);
+    ctx.fillText("圈 "+(Math.min(this.lapTimes.length+1,LAPS))+" / "+LAPS, 24, 36);
     // 右上：当前圈速 + 最佳
     ctx.textAlign="right"; ctx.font="16px sans-serif"; ctx.fillStyle="#9fb0d6";
     const lapMs = c.finished?0:(now-this.lapStart);
