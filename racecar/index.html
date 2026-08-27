@@ -133,6 +133,13 @@ class Track {
   }
   // 返回某点表面类型（边界外视为墙）
   surfaceAt(x,y){ return this.tileAt(x,y); }
+  // 距车最近的中心线采样点 → 外向单位法线（指向车所在一侧的墙）
+  normalAt(x,y){
+    let best=1e18, bx=this.center[0][0], by=this.center[0][1];
+    for(const p of this.center){ const dx=p[0]-x, dy=p[1]-y, d=dx*dx+dy*dy; if(d<best){best=d;bx=p[0];by=p[1];} }
+    let nx=x-bx, ny=y-by; const L=Math.hypot(nx,ny)||1;
+    return {x:nx/L, y:ny/L};
+  }
   render(ctx){
     // 草地底
     ctx.fillStyle="#0b0f17"; ctx.fillRect(0,0,CW,CH);
@@ -257,12 +264,16 @@ class Car {
                    [-Math.cos(this.angle)*hw+Math.sin(this.angle)*hh,-Math.sin(this.angle)*hw-Math.cos(this.angle)*hh]];
     let hitWall=false;
     for(const [ox,oy] of corners){
-      if(this.track.surfaceAt(this.x+ox,this.y+oy)===T_WALL){ hitWall=true; break; }
+      if(this.track.surfaceAt(this.x+ox,this.y+oy)!==T_ROAD){ hitWall=true; break; }
     }
     if(hitWall){
-      // 回退到上一合法位置 + 反弹
+      // 回退到上一合法位置；沿墙法线削去朝墙分量（贴墙滑行），不再夸张 180° 反弹
       this.x=this.lastValid.x; this.y=this.lastValid.y;
-      this.vx*=-0.35; this.vy*=-0.35;
+      const n=this.track.normalAt(this.x,this.y);
+      const vn=this.vx*n.x+this.vy*n.y;
+      if(vn>0){ this.vx-=vn*n.x; this.vy-=vn*n.y; }   // 去掉朝墙外的速度分量
+      this.x-=n.x*3; this.y-=n.y*3;                    // 轻微推回赛道内，避免贴边反复触发
+      this.vx*=0.82; this.vy*=0.82;                    // 撞墙轻微掉速
       game.onCrash(this.x,this.y);
     } else {
       this.lastValid.x=this.x; this.lastValid.y=this.y;
@@ -307,7 +318,7 @@ class ParticleSystem {
         1.0+Math.random()*0.8, 5+Math.random()*5, "200,205,215");
   }
   spark(x,y){ // 撞墙火花
-    for(let i=0;i<10;i++){
+    for(let i=0;i<6;i++){
       const a=Math.random()*Math.PI*2, s=2+Math.random()*4;
       this.emit("spark",x,y,Math.cos(a)*s,Math.sin(a)*s,0.3+Math.random()*0.3,2+Math.random()*2,"255,190,90");
     }
@@ -369,7 +380,7 @@ const game=new (class Game {
     this.particles=new ParticleSystem();
     this.skids=new SkidMarks();
     this.ghost=null; this.ghostFrames=[]; this.ghostRec=[];
-    this.shake=0;
+    this.shake=0; this._crashCd=0;
     this.last=performance.now();
     this.audio=null; this.muted=false;
     this.bindInput();
@@ -439,11 +450,15 @@ const game=new (class Game {
     const o=this.audio.createOscillator(), g=this.audio.createGain();
     o.type="square"; o.frequency.setValueAtTime(120,this.audio.currentTime);
     o.frequency.exponentialRampToValueAtTime(40,this.audio.currentTime+0.15);
-    g.gain.setValueAtTime(0.25,this.audio.currentTime);
+    g.gain.setValueAtTime(0.12,this.audio.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001,this.audio.currentTime+0.18);
     o.connect(g).connect(this.audio.destination); o.start(); o.stop(this.audio.currentTime+0.2);
   }
-  onCrash(x,y){ this.particles.spark(x,y); this.shake=10; this.crashSfx(); }
+  onCrash(x,y){
+    if(this._crashCd>0) return;            // 冷却中：贴墙滑行时不连发火花/音效
+    this._crashCd=0.25;
+    this.particles.spark(x,y); this.shake=4; this.crashSfx();
+  }
   // ---- 流程 ----
   chooseTrackCar(t,c){
     this.selTrack=t; this.selCar=c;
@@ -510,6 +525,7 @@ const game=new (class Game {
     }
     this.particles.update(f); this.skids.update(f);
     if(this.shake>0) this.shake*=Math.pow(0.85,f);
+    if(this._crashCd>0) this._crashCd-=dt;
   }
   finishRace(now){
     this.car.finished=true; this.state="results";
@@ -687,7 +703,7 @@ const game=new (class Game {
     ctx.fillText("圈 "+(Math.min(this.lapTimes.length+1,LAPS))+" / "+LAPS, 24, 36);
     // 右上：当前圈速 + 最佳
     ctx.textAlign="right"; ctx.font="16px sans-serif"; ctx.fillStyle="#9fb0d6";
-    const lapMs = c.finished?0:(now-this.lapStart);
+    const lapMs = c.finished?0:(this.state==="countdown"?0:(now-this.lapStart));
     ctx.fillText("本圈 "+(lapMs/1000).toFixed(2)+"s", CW-24, 30);
     ctx.fillText("最佳 "+(this.bestLap?(this.bestLap/1000).toFixed(2)+"s":"--"), CW-24, 52);
     if(this.car.nextCp<this.track.checkpoints.length){
