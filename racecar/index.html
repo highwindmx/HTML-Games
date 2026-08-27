@@ -40,30 +40,31 @@ const COLS = Math.ceil(CW / TS), ROWS = Math.ceil(CH / TS);
 const T_GRASS = 0, T_ROAD = 1;
 const LAPS = 3;
 const DRIFT_MIN_SPEED = 3.2;         // 低于此速度不判定漂移
+const DRIFT_HANGOVER = 22;           // 松开转向后，漂移态仍保留的帧数（延长滑行）
 const CAM_ZOOM = 1.8;                // 比赛中相机缩放：局部赛道更清晰、车更易操控
 
 // ---------- 车辆属性（均可调）----------
 // 极速整体下调约 22%，更可控、不易冲出
 const CAR_TYPES = [
   { name:"均衡型", color:"#4ea1ff", maxSpeed:8.8, accel:0.14, brake:0.20,
-    turn:0.055, normalLat: 0.84, driftLat:0.93, driftTh:1.5, desc:"速度中·抓地中·易上手" },
+    turn:0.055, normalLat: 0.84, driftLat:0.965, driftTh:1.5, desc:"速度中·抓地中·易上手" },
   { name:"速度型", color:"#ff5d8f", maxSpeed:10.2, accel:0.17, brake:0.18,
-    turn:0.050, normalLat:0.80, driftLat:0.95, driftTh:1.1, desc:"速度快·易漂移·难控" },
+    turn:0.050, normalLat:0.80, driftLat:0.975, driftTh:1.1, desc:"速度快·易漂移·难控" },
   { name:"抓地型", color:"#54d6a0", maxSpeed:7.6,  accel:0.125, brake:0.22,
-    turn:0.060, normalLat:0.90, driftLat:0.90, driftTh:2.3, desc:"慢但稳·漂移难" },
+    turn:0.060, normalLat:0.90, driftLat:0.93, driftTh: 2.3, desc:"慢但稳·漂移难" },
 ];
 
 // ---------- 对手赛车（4 辆，性能各异）----------
 // maxSpeed/accel/grip 各不相同，配合 AI 难度系数 skill 形成明显快慢差异
 const OPPONENTS = [
   { name:"赤焰", color:"#ff4d4d", maxSpeed:10.0, accel:0.16, brake:0.18,
-    turn:0.054, normalLat:0.86, driftLat:0.94, driftTh:1.3, skill:1.00 },
+    turn:0.054, normalLat:0.86, driftLat:0.965, driftTh:1.3, skill:1.00 },
   { name:"金隼", color:"#ffd24d", maxSpeed: 10.8, accel:0.175, brake:0.16,
-    turn:0.046, normalLat:0.80, driftLat:0.96, driftTh:1.0, skill:1.05 },
+    turn:0.046, normalLat:0.80, driftLat:0.978, driftTh:1.0, skill:1.05 },
   { name:"碧波", color:"#3fd0ff", maxSpeed:9.0, accel:0.135, brake:0.20,
-    turn:0.058, normalLat:0.88, driftLat:0.92, driftTh:1.8, skill:0.92 },
+    turn:0.058, normalLat:0.88, driftLat:0.945, driftTh:1.8, skill:0.92 },
   { name:"墨影", color:"#b07cff", maxSpeed:8.2,accel:0.115, brake:0.22,
-    turn:0.062, normalLat:0.92, driftLat:0.89, driftTh:2.5, skill:0.86 },
+    turn:0.062, normalLat:0.92, driftLat:0.93, driftTh:2.5, skill:0.86 },
 ];
 
 // 三关控制点（顺时针），Catmull-Rom 闭合样条生成中心线
@@ -207,7 +208,7 @@ class Car {
     this.x=track.start[0]; this.y=track.start[1];
     this.angle=track.startAngle;
     this.vx=0; this.vy=0;
-    this.drifting=false; this.lap=0; this.nextCp=0; this.finished=false;
+    this.drifting=false; this.driftTimer=0; this.lap=0; this.nextCp=0; this.finished=false;
     this.driftCombo=0; this.driftScore=0;
     this.w=26; this.h=14;
   }
@@ -242,10 +243,13 @@ class Car {
     if(surf!==T_ROAD){ maxV*=0.5; latFric=Math.min(0.97,T.normalLat+0.12); vF*=Math.pow(0.92,f); this.offTrack=true; }
     else this.offTrack=false;
 
-    // 漂移判定：高速 + 横向滑移超阈值
+    // 漂移判定：高速转角时进入漂移；松开转向后保留一段「滑行余韵」，避免一松手就被抓地吃掉
     const slip=Math.abs(vL);
     const wasDrift=this.drifting;
-    this.drifting = this.speed>DRIFT_MIN_SPEED && slip>T.driftTh && steer!==0;
+    const driftActive = this.speed>DRIFT_MIN_SPEED && slip>T.driftTh && steer!==0;
+    if(driftActive) this.driftTimer = DRIFT_HANGOVER;     // 持续按住转向 → 保持漂移态
+    else if(this.driftTimer>0) this.driftTimer -= f;
+    this.drifting = this.driftTimer>0;
     // 退出漂移时结算连击
     if(wasDrift && !this.drifting){
       this.driftScore += Math.round(this.driftCombo);
