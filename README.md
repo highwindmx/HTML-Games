@@ -13,6 +13,7 @@
 | `warship/` | **风帆王者** | Phaser 3 + Three.js（本地 vendored，无需服务器） | 风帆舰队海战：借风向操舵、侧舷齐射、舰队 AI、编队与升级、关卡推进 | 浏览器直接打开 `25D/index.html`（2.5D 俯视版）或 `3D/index.html`（3D 球面版） |
 | `boids/` | **鸟群 Boids** | 原生 HTML/CSS/JS，单文件 | 经典 Reynolds 三规则（分离 / 对齐 / 聚合）驱动的鸟群涌现；可调权重、感知半径、数量，鼠标可吸引或驱散；空间网格优化支撑数百只实时模拟 | 浏览器直接打开 `index.html` |
 | `magnetic/` | **粒子花火**（Magnetic Collider） | 原生 HTML/CSS/JS，单文件 | 洛伦兹力磁场解谜：拖拽磁极 / 调强度 / 翻转 N·S，设计磁场让带电粒子偏转命中靶标；预测线与实飞共用同一积分器，保证"所见即所飞" | 浏览器直接打开 `index.html` |
+| `racecar/` | **霓虹漂移**（Neon Drift） | 原生 HTML/CSS/JS，单文件 | 2D 俯视漂移赛车：键盘驾驶、高速入弯触发漂移（侧滑 / 胎痕 / 烟雾连击积分），三条难度赛道 + 检查点防抄近道 + 圈速计时评级 S/A/B/C；含迷你地图、幽灵车、本地最佳成绩、WebAudio 合成引擎/碰撞音效 | 浏览器直接打开 `index.html` |
 
 > warship 的 `archive/` 为早期"风帆舰队对轰"原型，`smoke.js` 为无头冒烟测试脚本（Node 驱动 Phaser 桩跑通战斗场景）。
 
@@ -36,7 +37,8 @@ HTMLGames/
 │   ├── 3D/           # 3D 球面版（Three.js 地球仪）
 │   ├── archive/      # 早期原型
 │   └── smoke.js      # 冒烟测试
-└── magnetic/        # 粒子花火（Magnetic Collider · 洛伦兹力磁场解谜，单文件）
+├── magnetic/        # 粒子花火（Magnetic Collider · 洛伦兹力磁场解谜，单文件）
+└── racecar/         # 霓虹漂移（Neon Drift · 2D 俯视漂移赛车，单文件）
 ```
 
 ## 约定
