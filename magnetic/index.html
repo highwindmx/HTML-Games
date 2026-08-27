@@ -60,49 +60,56 @@
   </div>
   <div class="btns">
     <button id="flip" class="btn ghost">翻转 N/S</button>
-    <button id="fire" class="btn">发射粒子</button>
+    <button id="pause" class="btn">暂停</button>
     <button id="reset" class="btn ghost">重置</button>
   </div>
 </div>
 
-<div id="status" class="status">拖拽蓝色磁极改变磁场，让粒子命中右侧靶标</div>
+<div id="status" class="status">自动脉冲发射中 · 拖拽磁极或调节强度，让粒子命中右侧靶标</div>
 
 <div class="legend">
-  <b>玩法</b>：你不能直接控制粒子，只能<b>设计磁场</b>。拖动磁极、拉动强度滑杆，
-  灰色虚线是粒子未来轨迹（与实飞共用同一套物理，所见即所飞）。调好布局后点「发射粒子」。
-  <span class="k" style="background:#4ea1ff"></span>N 极（strength&gt;0，逆时针偏转）
-  <span class="k" style="background:#ff6b6b"></span>S 极（strength&lt;0，顺时针偏转）
+  <b>玩法</b>：你不能直接控制粒子，只能<b>设计磁场</b>。粒子从发射源<b>自动脉冲式</b>喷出；
+  灰色虚线是下一发脉冲的预测轨迹（与实飞共用同一套物理，所见即所飞）。
+  <b>磁场流线</b>：蓝=N 极向外、红=S 极向内，虚线流动方向即场方向。
+  <span class="k" style="background:#4ea1ff"></span>N 极（逆时针偏转）
+  <span class="k" style="background:#ff6b6b"></span>S 极（顺时针偏转）
   <span class="k" style="background:#54d6a0"></span>靶标
   <span class="k" style="background:#f87171"></span>粒子
 </div>
 
 <script>
 "use strict";
-// ===== 常量（[from spec] 表示数值来自需求文档，未经 playtest 标注）=====
+// ===== 常量 =====
 const W = 800, H = 460;
-const DT = 0.08;          // [from spec] 积分步长
-const V0 = 4.5;           // [from spec] 初速度（水平向右）
-const STEPS = 350;        // [from spec] 预测线积分步数
-const MIN_D = 12;         // [from spec] 磁场最小作用距离（防除零）
-const LIFE = 400;         // [from spec] 实飞寿命（步），超时判失败
-const OOB = 50;           // [from spec] 出界缓冲 ±px
-const POLE_R = 18;        // [from spec] 磁极半径
+const DT = 0.08;          // 积分步长
+const V0 = 4.5;           // 初速度（水平向右）
+const STEPS = 350;        // 预测线积分步数
+const MIN_D = 12;         // 磁场最小作用距离（防除零）
+const OOB = 50;           // 出界缓冲 ±px
+const POLE_R = 18;        // 磁极半径
 const SRC = { x: 80, y: H / 2 };
 const TGT = { x: W - 80, y: H / 2 };
 const SRC_R = 14, TGT_R = 22;
-const SUB = 5;            // 每帧积分步数（[from spec] 约 5 步/帧保证平滑）
+const SUB = 5;            // 每帧积分步数
+const PULSE_INTERVAL = 0.6; // 自动脉冲间隔（秒）
+const MAX_PARTICLES = 60;   // 同屏脉冲上限
 
 // ===== 状态 =====
 let poles = [{ x: W / 2, y: 140, strength: 5.0 }];
-let phase = "IDLE";       // IDLE -> FLYING -> SUCCESS / FAIL
-let particle = null;      // { x, y, vx, vy, trail:[], steps }
+let particles = [];       // 多粒子脉冲流（无寿命，仅出界/命中结束）
+let running = true;       // 自动脉冲发射开关
+let pulseTimer = 0;
+let hitCount = 0;         // 累计命中脉冲数
+let targetGlow = 0;       // 命中后靶标高亮衰减量 [0,1]
+let simTime = 0;          // 磁场流线动画时钟
 let dragging = null, dragOffset = { x: 0, y: 0 };
+let lastT = 0;
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const strengthEl = document.getElementById("strength");
 const strVal = document.getElementById("strVal");
-const fireBtn = document.getElementById("fire");
+const pauseBtn = document.getElementById("pause");
 const resetBtn = document.getElementById("reset");
 const flipBtn = document.getElementById("flip");
 const statusEl = document.getElementById("status");
@@ -129,7 +136,7 @@ function integrateStep(st) {
   st.y += st.vy * DT;
   return st;
 }
-// 预测线：从发射源出发跑 STEPS 步
+// 预测线：从发射源出发跑 STEPS 步（与实飞同一积分器）
 function computeTrajectory() {
   let st = { x: SRC.x, y: SRC.y, vx: V0, vy: 0 };
   const pts = [{ x: st.x, y: st.y }];
@@ -156,16 +163,49 @@ function drawGrid() {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   }
 }
+// 磁场等高线（强度分层）
 function drawField() {
   for (const p of poles) {
     const col = p.strength > 0 ? "78,161,255" : p.strength < 0 ? "255,107,107" : "150,150,150";
     for (let r = 30; r <= 260; r += 30) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(" + col + ",0.06)";   // [from spec] 等高线透明度 0.06
+      ctx.strokeStyle = "rgba(" + col + ",0.06)";
       ctx.lineWidth = 1;
       ctx.stroke();
     }
+  }
+}
+// 磁场流线（新增视觉）：以磁极为中心的径向流线，虚线流动表方向
+function drawFieldLines() {
+  for (const p of poles) {
+    const col = p.strength > 0 ? "78,161,255" : "255,107,107";
+    const isN = p.strength >= 0;     // N 极向外、S 极向内
+    const N = 18;
+    const L = Math.hypot(W, H);      // 足够长，超出画布自动裁剪
+    ctx.save();
+    ctx.setLineDash([6, 10]);
+    ctx.lineDashOffset = isN ? -((simTime * 36) % 16) : ((simTime * 36) % 16);
+    ctx.lineWidth = 1.3;
+    for (let i = 0; i < N; i++) {
+      const ang = (i / N) * Math.PI * 2;
+      const cx = Math.cos(ang), cy = Math.sin(ang);
+      const r0 = POLE_R + 5;
+      const x0 = p.x + cx * r0, y0 = p.y + cy * r0;
+      const x1 = p.x + cx * (r0 + L), y1 = p.y + cy * (r0 + L);
+      ctx.strokeStyle = "rgba(" + col + ",0.16)";
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      // 方向箭头（N 向外 / S 向内）
+      const ax = p.x + cx * (r0 + 70), ay = p.y + cy * (r0 + 70);
+      const aAng = isN ? ang : ang + Math.PI;
+      ctx.fillStyle = "rgba(" + col + ",0.42)";
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - 6 * Math.cos(aAng - 0.4), ay - 6 * Math.sin(aAng - 0.4));
+      ctx.lineTo(ax - 6 * Math.cos(aAng + 0.4), ay - 6 * Math.sin(aAng + 0.4));
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
   }
 }
 function drawTrajectory(pts) {
@@ -200,16 +240,16 @@ function drawSource() {
   ctx.fillText("发射源", SRC.x, SRC.y - SRC_R - 6);
 }
 function drawTarget() {
-  const hit = phase === "SUCCESS";
-  ctx.strokeStyle = hit ? "#7CFFB0" : "#54d6a0";
-  ctx.lineWidth = hit ? 3 : 2;
+  const glow = targetGlow;
+  ctx.strokeStyle = glow > 0 ? "#7CFFB0" : "#54d6a0";
+  ctx.lineWidth = glow > 0 ? 3 : 2;
   ctx.beginPath(); ctx.arc(TGT.x, TGT.y, TGT_R, 0, Math.PI * 2); ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(TGT.x - TGT_R, TGT.y); ctx.lineTo(TGT.x + TGT_R, TGT.y);
   ctx.moveTo(TGT.x, TGT.y - TGT_R); ctx.lineTo(TGT.x, TGT.y + TGT_R);
   ctx.stroke();
-  if (hit) {
-    ctx.fillStyle = "rgba(84,214,160,0.25)";
+  if (glow > 0) {
+    ctx.fillStyle = "rgba(84,214,160," + (0.1 + 0.3 * glow).toFixed(3) + ")";
     ctx.beginPath(); ctx.arc(TGT.x, TGT.y, TGT_R, 0, Math.PI * 2); ctx.fill();
   }
   ctx.fillStyle = "#54d6a0";
@@ -220,7 +260,7 @@ function drawPole() {
   for (const p of poles) {
     const col = p.strength > 0 ? "#4ea1ff" : p.strength < 0 ? "#ff6b6b" : "#888";
     const label = p.strength > 0 ? "N" : p.strength < 0 ? "S" : "0";
-    if (dragging === p) {           // 拖拽高亮外圈 [from spec 6.2]
+    if (dragging === p) {
       ctx.beginPath(); ctx.arc(p.x, p.y, POLE_R + 6, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fill();
     }
@@ -231,61 +271,71 @@ function drawPole() {
     ctx.fillText(label, p.x, p.y);
   }
 }
-function drawParticle() {
-  if (phase !== "FLYING" || !particle) return;
-  // 尾迹 [from spec 6.3]
-  ctx.strokeStyle = "rgba(248,113,113,0.35)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let i = 0; i < particle.trail.length; i++) {
-    const t = particle.trail[i];
-    if (i === 0) ctx.moveTo(t.x, t.y); else ctx.lineTo(t.x, t.y);
+function drawParticles() {
+  for (const p of particles) {
+    // 尾迹
+    ctx.strokeStyle = "rgba(248,113,113,0.35)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < p.trail.length; i++) {
+      const t = p.trail[i];
+      if (i === 0) ctx.moveTo(t.x, t.y); else ctx.lineTo(t.x, t.y);
+    }
+    ctx.stroke();
+    // 本体 4px + 8px 速度方向线
+    ctx.fillStyle = "#f87171";
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
+    const sp = Math.hypot(p.vx, p.vy) || 1;
+    ctx.strokeStyle = "#fca5a5"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + p.vx / sp * 8, p.y + p.vy / sp * 8);
+    ctx.stroke();
   }
-  ctx.stroke();
-  // 本体 4px + 8px 速度方向线
-  ctx.fillStyle = "#f87171";
-  ctx.beginPath(); ctx.arc(particle.x, particle.y, 4, 0, Math.PI * 2); ctx.fill();
-  const sp = Math.hypot(particle.vx, particle.vy) || 1;
-  ctx.strokeStyle = "#fca5a5"; ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(particle.x, particle.y);
-  ctx.lineTo(particle.x + particle.vx / sp * 8, particle.y + particle.vy / sp * 8);
-  ctx.stroke();
 }
 function draw() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "#0a0a0f"; ctx.fillRect(0, 0, W, H);
   drawGrid();
   drawField();
-  if (phase === "IDLE") drawTrajectory(computeTrajectory()); // 仅 IDLE 显示预测线
+  drawFieldLines();                            // 磁场流线
+  drawTrajectory(computeTrajectory());        // 预测线：始终显示（下一发脉冲路径）
   drawSource();
   drawTarget();
   drawPole();
-  drawParticle();
+  drawParticles();
 }
 
 // ===== 主循环 =====
-function loop() {
-  if (phase === "FLYING" && particle) {
-    for (let i = 0; i < SUB; i++) {
-      integrateStep(particle);
-      particle.steps++;
-      particle.trail.push({ x: particle.x, y: particle.y });
-      if (particle.trail.length > 200) particle.trail.shift();
-      if (hitTarget(particle)) {
-        phase = "SUCCESS";
-        setStatus("命中靶标！用时 " + particle.steps + " 步", true);
-        fireBtn.disabled = false;
-        break;
-      }
-      if (outOfBounds(particle) || particle.steps > LIFE) {
-        phase = "FAIL";
-        setStatus(particle.steps > LIFE ? "失败：超过寿命未命中" : "失败：粒子出界", false);
-        fireBtn.disabled = false;
-        break;
-      }
+function loop(ts) {
+  const dt = lastT ? Math.min(0.05, (ts - lastT) / 1000) : 0.016;
+  lastT = ts;
+  simTime += dt;
+  // 自动脉冲发射
+  if (running) {
+    pulseTimer += dt;
+    if (pulseTimer >= PULSE_INTERVAL) {
+      pulseTimer -= PULSE_INTERVAL;
+      if (particles.length < MAX_PARTICLES)
+        particles.push({ x: SRC.x, y: SRC.y, vx: V0, vy: 0, trail: [] });
     }
   }
+  // 实飞更新（无寿命，仅出界/命中结束）
+  for (let k = particles.length - 1; k >= 0; k--) {
+    const p = particles[k];
+    for (let i = 0; i < SUB; i++) {
+      integrateStep(p);
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > 200) p.trail.shift();
+      if (hitTarget(p)) {
+        hitCount++; targetGlow = 1;
+        setStatus("命中靶标！累计 " + hitCount + " 次脉冲", true);
+        particles.splice(k, 1); break;
+      }
+      if (outOfBounds(p)) { particles.splice(k, 1); break; }
+    }
+  }
+  if (targetGlow > 0) targetGlow = Math.max(0, targetGlow - dt * 1.6);
   draw();
   requestAnimationFrame(loop);
 }
@@ -333,19 +383,17 @@ flipBtn.addEventListener("click", () => {
   strengthEl.value = v;
   strVal.textContent = v.toFixed(1);
 });
-fireBtn.addEventListener("click", () => {
-  if (phase !== "IDLE") return;
-  particle = { x: SRC.x, y: SRC.y, vx: V0, vy: 0, trail: [], steps: 0 };
-  phase = "FLYING";
-  fireBtn.disabled = true;          // FLYING 期间禁用 [from spec 6.4]
-  setStatus("粒子飞行中…", null);
+pauseBtn.addEventListener("click", () => {
+  running = !running;
+  pauseBtn.textContent = running ? "暂停" : "继续";
+  setStatus(running ? "自动脉冲发射中 · 累计命中 " + hitCount + " 次" : "已暂停", null);
 });
 resetBtn.addEventListener("click", () => {
   poles = [{ x: W / 2, y: 140, strength: 5.0 }];
   strengthEl.value = 5.0; strVal.textContent = "5.0";
-  particle = null; phase = "IDLE";
-  fireBtn.disabled = false;
-  setStatus("拖拽蓝色磁极改变磁场，让粒子命中右侧靶标", null);
+  particles = []; hitCount = 0; targetGlow = 0; pulseTimer = 0; running = true;
+  pauseBtn.textContent = "暂停";
+  setStatus("自动脉冲发射中 · 拖拽磁极或调节强度，让粒子命中右侧靶标", null);
 });
 
 function setStatus(t, ok) {
@@ -353,7 +401,7 @@ function setStatus(t, ok) {
   statusEl.className = "status" + (ok === true ? " ok" : ok === false ? " bad" : "");
 }
 
-loop();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
