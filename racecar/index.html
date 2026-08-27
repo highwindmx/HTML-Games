@@ -43,25 +43,26 @@ const DRIFT_MIN_SPEED = 3.2;         // 低于此速度不判定漂移
 const CAM_ZOOM = 1.8;                // 比赛中相机缩放：局部赛道更清晰、车更易操控
 
 // ---------- 车辆属性（均可调）----------
+// 极速整体下调约 22%，更可控、不易冲出
 const CAR_TYPES = [
-  { name:"均衡型", color:"#4ea1ff", maxSpeed:11.0, accel:0.16, brake:0.22,
-    turn:0.055, normalLat:0.84, driftLat:0.93, driftTh:1.5, desc:"速度中·抓地中·易上手" },
-  { name:"速度型", color:"#ff5d8f", maxSpeed:13.0, accel:0.20, brake:0.20,
+  { name:"均衡型", color:"#4ea1ff", maxSpeed:8.8, accel:0.14, brake:0.20,
+    turn:0.055, normalLat: 0.84, driftLat:0.93, driftTh:1.5, desc:"速度中·抓地中·易上手" },
+  { name:"速度型", color:"#ff5d8f", maxSpeed:10.2, accel:0.17, brake:0.18,
     turn:0.050, normalLat:0.80, driftLat:0.95, driftTh:1.1, desc:"速度快·易漂移·难控" },
-  { name:"抓地型", color:"#54d6a0", maxSpeed:9.5,  accel:0.14, brake:0.24,
+  { name:"抓地型", color:"#54d6a0", maxSpeed:7.6,  accel:0.125, brake:0.22,
     turn:0.060, normalLat:0.90, driftLat:0.90, driftTh:2.3, desc:"慢但稳·漂移难" },
 ];
 
 // ---------- 对手赛车（4 辆，性能各异）----------
 // maxSpeed/accel/grip 各不相同，配合 AI 难度系数 skill 形成明显快慢差异
 const OPPONENTS = [
-  { name:"赤焰", color:"#ff4d4d", maxSpeed:12.6, accel:0.19, brake:0.20,
+  { name:"赤焰", color:"#ff4d4d", maxSpeed:10.0, accel:0.16, brake:0.18,
     turn:0.054, normalLat:0.86, driftLat:0.94, driftTh:1.3, skill:1.00 },
-  { name:"金隼", color:"#ffd24d", maxSpeed:13.4, accel:0.21, brake:0.18,
+  { name:"金隼", color:"#ffd24d", maxSpeed: 10.8, accel:0.175, brake:0.16,
     turn:0.046, normalLat:0.80, driftLat:0.96, driftTh:1.0, skill:1.05 },
-  { name:"碧波", color:"#3fd0ff", maxSpeed:10.8, accel:0.15, brake:0.22,
+  { name:"碧波", color:"#3fd0ff", maxSpeed:9.0, accel:0.135, brake:0.20,
     turn:0.058, normalLat:0.88, driftLat:0.92, driftTh:1.8, skill:0.92 },
-  { name:"墨影", color:"#b07cff", maxSpeed:9.8,  accel:0.13, brake:0.25,
+  { name:"墨影", color:"#b07cff", maxSpeed:8.2,accel:0.115, brake:0.22,
     turn:0.062, normalLat:0.92, driftLat:0.89, driftTh:2.5, skill:0.86 },
 ];
 
@@ -534,6 +535,9 @@ const game=new (class Game {
       }
     }
 
+    // 赛车间碰撞：软碰撞——互相推开 + 沿法线阻尼；玩家卷入时火花/震屏/音效
+    this.resolveCollisions();
+
     // 进度（检查点 / 圈数），玩家与对手统一处理
     this.stepProgress(this.car, now, true);
     for(const o of this.oppCars) this.stepProgress(o, now, false);
@@ -595,6 +599,33 @@ const game=new (class Game {
           car.lap++; car.nextCp=0;
           if(car.lap>=LAPS){ car.finished=true; car.finishTime=now-this.totalStart; }
         }
+      }
+    }
+  }
+  // 赛车间碰撞：软碰撞——互相推开 + 沿法线阻尼；玩家卷入时火花/震屏/音效
+  resolveCollisions(){
+    const cars=[this.car, ...this.oppCars];
+    const R=15;   // 碰撞阈值（约半车长，仅真正贴近才触发）
+    for(let i=0;i<cars.length;i++){
+      for(let j=i+1;j<cars.length;j++){
+        const a=cars[i], b=cars[j];
+        const dx=b.x-a.x, dy=b.y-a.y;
+        const d=Math.hypot(dx,dy);
+        if(d>=R || d<1e-4) continue;
+        const nx=dx/d, ny=dy/d, overlap=R-d;
+        // 沿法线互相推开，消除重叠
+        a.x-=nx*overlap*0.5; a.y-=ny*overlap*0.5;
+        b.x+=nx*overlap*0.5; b.y+=ny*overlap*0.5;
+        // 沿法线分量：逼近则阻尼（顶撞后滑开，不反弹）
+        const av=a.vx*nx+a.vy*ny, bv=b.vx*nx+b.vy*ny;
+        const rel=av-bv;
+        if(rel>0){
+          const imp=rel*0.5;
+          a.vx-=imp*nx; a.vy-=imp*ny;
+          b.vx+=imp*nx; b.vy+=imp*ny;
+        }
+        // 玩家卷入：火花 + 震屏 + 音效（受冷却限制，避免连发）
+        if(a===this.car || b===this.car) this.onCrash((a.x+b.x)/2,(a.y+b.y)/2);
       }
     }
   }
@@ -817,7 +848,7 @@ const game=new (class Game {
       ctx.fillStyle="#ffd166"; ctx.fillText("检查点 "+(this.car.nextCp+1)+"/4", CW-24, 74);
     } else { ctx.fillStyle="#54d6a0"; ctx.fillText("冲线!", CW-24, 74); }
     // 左下：速度表
-    const sp=c.speed, max=13;
+    const sp=c.speed, max=11;
     ctx.save(); ctx.translate(90, CH-90);
     ctx.strokeStyle="#2a3145"; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(0,0,52,Math.PI*0.75,Math.PI*2.25); ctx.stroke();
     const ang=Math.PI*0.75 + (sp/max)*(Math.PI*1.5);
